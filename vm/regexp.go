@@ -4,19 +4,19 @@
 
 /* Loosely based on http://vcs.pcre.org/viewvc/code/trunk/pcredemo.c */
 
-OBJ TrRegexp_new(VM, char *pattern, int options) {
+OBJ TrRegexp_new(vm *struct TrVM, char *pattern, int options) {
   TrRegexp *r = TR_INIT_CORE_OBJECT(Regexp);
   const char *error;
   int erroffset;
   
-  r->re = pcre_compile(
+  r.re = pcre_compile(
     pattern,              /* the pattern */
     options,              /* default options */
     &error,               /* for error message */
     &erroffset,           /* for error offset */
     NULL);                /* use default character tables */
   
-  if (r->re == NULL) {
+  if (r.re == NULL) {
     TrRegex_free(vm, (OBJ)r);
     tr_raise(RegexpError, "compilation failed at offset %d: %s", erroffset, error);
   }
@@ -24,21 +24,20 @@ OBJ TrRegexp_new(VM, char *pattern, int options) {
   return (OBJ)r;
 }
 
-OBJ TrRegexp_compile(VM, OBJ self, OBJ pattern) {
-  UNUSED(self);
-  return TrRegexp_new(vm, TR_STR_PTR(pattern), 0);
+OBJ TrRegexp_compile(vm *struct TrVM, OBJ self, OBJ pattern) {
+	return TrRegexp_new(vm, TR_STR_PTR(pattern), 0);
 }
 
 #define OVECCOUNT 30    /* should be a multiple of 3 */
 
-OBJ TrRegexp_match(VM, OBJ self, OBJ str) {
+OBJ TrRegexp_match(vm *struct TrVM, OBJ self, OBJ str) {
   TrRegexp *r = TR_CREGEXP(self);
   char *subject = TR_STR_PTR(str);
   int rc;
   int ovector[OVECCOUNT];
   
   rc = pcre_exec(
-    r->re,                /* the compiled pattern */
+    r.re,                /* the compiled pattern */
     NULL,                 /* no extra data - we didn't study the pattern */
     subject,              /* the subject string */
     TR_STR_LEN(str),      /* the length of the subject */
@@ -66,14 +65,13 @@ OBJ TrRegexp_match(VM, OBJ self, OBJ str) {
   return data;
 }
 
-void TrRegex_free(VM, OBJ self) {
-  UNUSED(vm);
-  TrRegexp *r = (TrRegexp*)self;
-  pcre_free(r->re);
-  TR_FREE(r);
+void TrRegex_free(vm *struct TrVM, OBJ self) {
+	TrRegexp *r = (TrRegexp*)self;
+	pcre_free(r.re);
+	TR_FREE(r);
 }
 
-void TrRegexp_init(VM) {
+void TrRegexp_init(vm *struct TrVM) {
   OBJ c = TR_INIT_CORE_CLASS(Regexp, Object);
   tr_metadef(c, "new", TrRegexp_compile, 1);
   tr_def(c, "match", TrRegexp_match, 1);

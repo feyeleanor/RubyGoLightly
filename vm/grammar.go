@@ -8,7 +8,7 @@
 #define YYSTYPE   OBJ
 #define YYMALLOC  TR_MALLOC
 #define YYREALLOC TR_REALLOC
-#define yyvm      compiler->vm
+#define yyvm      compiler.vm
 
 static char *charbuf;
 static char *sbuf;
@@ -34,7 +34,7 @@ static TrCompiler *compiler;
 
 %}
 
-Root      = s:Stmts EOF                     { compiler->node = NODE(ROOT, s) }
+Root      = s:Stmts EOF                     { compiler.node = NODE(ROOT, s) }
 
 Stmts     = SEP*
             - head:Stmt Comment?            { head = NODES(head) }
@@ -80,7 +80,7 @@ AsgnCall   =                                { rcv = 0 }
             ( rcv:Value '.'
             )? ( rmsg:Message '.'           { rcv = NODE2(SEND, rcv, rmsg) }
                )* msg:ID - asg:ASSIGN
-                  - val:Stmt                { VM = yyvm; $$ = NODE2(SEND, rcv, NODE2(MSG, SYMCAT(msg, asg), NODES(NODE(ARG, val)))) }
+                  - val:Stmt                { struct TrVM *vm = yyvm; $$ = NODE2(SEND, rcv, NODE2(MSG, SYMCAT(msg, asg), NODES(NODE(ARG, val)))) }
 
 Receiver  = (                               { rcv = 0 }
               rcv:Call
@@ -284,7 +284,7 @@ REGEXP    = '/'                             { STRING_START }
 
 -         = [ \t]*
 SPACE     = [ ]+
-EOL       = ( '\n' | '\r\n' | '\r' )        { compiler->line++ }
+EOL       = ( '\n' | '\r\n' | '\r' )        { compiler.line++ }
 EOF       = !.
 SEP       = ( - Comment? (EOL | ';') )+
 
@@ -292,8 +292,8 @@ SEP       = ( - Comment? (EOL | ';') )+
 
 /* Raise a syntax error. */
 OBJ yyerror() {
-  VM = yyvm;
-  OBJ msg = tr_sprintf(vm, "SyntaxError in %s at line %d", TR_STR_PTR(compiler->filename), compiler->line);
+  struct TrVM *vm = yyvm;
+  OBJ msg = tr_sprintf(vm, "SyntaxError in %s at line %d", TR_STR_PTR(compiler.filename), compiler.line);
   /* Stupid ugly code, just to build a string... I suck... */
   if (yytext[0]) TrString_push(vm, msg, tr_sprintf(vm, " near token '%s'", yytext));
   if (yypos < yylimit) {
@@ -310,15 +310,15 @@ OBJ yyerror() {
   tr_raise(SyntaxError, TR_STR_PTR(msg));
 }
 
-/* Compiles code to a TrBlock.
+/* Compiles code to a Block.
    Returns NULL on error, error is stored in TR_EXCEPTION. */
-TrBlock *TrBlock_compile(VM, char *code, char *fn, size_t lineno) {
+func Block_compile(vm *TrVM, code char *, fn char *, lineno size_t) Block * {
   assert(!compiler && "parser not reentrant");
   charbuf = code;
   compiler = TrCompiler_new(vm, fn);
-  compiler->line += lineno;
-  compiler->filename = TrString_new2(vm, fn);
-  TrBlock *b = NULL;
+  compiler.line += lineno;
+  compiler.filename = TrString_new2(vm, fn);
+  Block *b = NULL;
 
   if (!yyparse()) {
     yyerror();
@@ -326,7 +326,7 @@ TrBlock *TrBlock_compile(VM, char *code, char *fn, size_t lineno) {
   }
 
   TrCompiler_compile(compiler);
-  b = compiler->block;
+  b = compiler.block;
 error:
   charbuf = 0;
   compiler = 0;

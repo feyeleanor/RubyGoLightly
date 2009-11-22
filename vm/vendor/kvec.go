@@ -26,9 +26,13 @@
 /*
   An example:
 
-#include "kvec.h"
-int main() {
-	kvec_t(int) array;
+type IntVector struct {
+	n, m		size_t;
+	a			*int;
+}
+
+func main() {
+	array = new(IntVector);
 	kv_init(array);
 	kv_push(int, array, 10); // append
 	kv_a(int, array, 20) = 5; // dynamic
@@ -38,21 +42,10 @@ int main() {
 }
 */
 
-/*
-  2008-09-22 (0.1.0):
-
-	* The initial version.
-
-*/
-
-#ifndef AC_KVEC_H
-#define AC_KVEC_H
-
 #include <stdlib.h>
 
 #define kv_roundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
 
-#define kvec_t(type) struct { size_t n, m; type *a; }
 #define kv_init(v) ((v).n = (v).m = 0, (v).a = 0)
 #define kv_destroy(v) TR_FREE((v).a)
 #define kv_A(v, i) ((v).a[(i)])
@@ -80,5 +73,3 @@ int main() {
 						   (v).a = (type*)TR_REALLOC((v).a, sizeof(type) * (v).m), 0) \
 						  : (v).n <= (size_t)(i)? (v).n = (i)			\
 						  : 0), (v).a[(i)]
-
-#endif

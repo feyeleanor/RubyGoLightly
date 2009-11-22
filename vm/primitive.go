@@ -1,22 +1,19 @@
 #include "tr.h"
 #include "internal.h"
 
-OBJ TrNil_to_s(VM, OBJ self) {
-  UNUSED(self);
-  return TrString_new2(vm, "");
+OBJ TrNil_to_s(vm *struct TrVM, OBJ self) {
+	return TrString_new2(vm, "");
 }
 
-OBJ TrTrue_to_s(VM, OBJ self) {
-  UNUSED(self);
-  return TrString_new2(vm, "true");
+OBJ TrTrue_to_s(vm *struct TrVM, OBJ self) {
+	return TrString_new2(vm, "true");
 }
 
-OBJ TrFalse_to_s(VM, OBJ self) {
-  UNUSED(self);
-  return TrString_new2(vm, "false");
+OBJ TrFalse_to_s(vm *struct TrVM, OBJ self) {
+	return TrString_new2(vm, "false");
 }
 
-void TrPrimitive_init(VM) {
+void TrPrimitive_init(vm *struct TrVM) {
   OBJ nilc = TR_INIT_CORE_CLASS(NilClass, Object);
   OBJ truec = TR_INIT_CORE_CLASS(TrueClass, Object);
   OBJ falsec = TR_INIT_CORE_CLASS(FalseClass, Object);
