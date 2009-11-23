@@ -54,7 +54,7 @@ OBJ TrRegexp_match(vm *struct TrVM, OBJ self, OBJ str) {
   }
   
   /* TODO should create a MatchData object */
-  OBJ data = TrArray_new(vm);
+  OBJ data = newArray(vm);
   int i;
   for (i = 0; i < rc; i++) {
     char *substring_start = subject + ovector[2*i];

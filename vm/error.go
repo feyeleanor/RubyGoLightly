@@ -61,7 +61,7 @@ OBJ TrException_set_backtrace(vm *struct TrVM, OBJ self, OBJ backtrace) {
 }
 
 OBJ TrException_default_handler(vm *struct TrVM, OBJ exception) {
-  TrClass *c = TR_CCLASS(TR_CLASS(exception));
+  Class *c = TR_CCLASS(TR_CLASS(exception));
   OBJ msg = tr_getivar(exception, "@message");
   OBJ backtrace = tr_getivar(exception, "@backtrace");
   

@@ -51,9 +51,9 @@ func TrVM_defclass(vm *TrVM, name OBJ, b *Block, module int, super OBJ) OBJ {
   if !mod {
 	// new module/class
     if module
-      mod = TrModule_new(vm, name);
+      mod = newModule(vm, name);
     else
-      mod = TrClass_new(vm, name, super ? super : TR_CORE_CLASS(Object));
+      mod = newClass(vm, name, super ? super : TR_CORE_CLASS(Object));
     if mod == TR_UNDEF { return TR_UNDEF }
     TrObject_const_set(vm, vm.frame.class, name, mod);
   }
@@ -67,14 +67,14 @@ func TrVM_defclass(vm *TrVM, name OBJ, b *Block, module int, super OBJ) OBJ {
 
 func TrVM_interpret_method(vm *struct TrVM, self OBJ, argc int, argv []OBJ) OBJ {
 	assert(vm.frame.method);
-	Block *b = (Block *)TR_CMETHOD(vm.frame.method).data;
+	Block *b = (Block *)((Method*)vm.frame.method).data;
 	if argc != (int)b.argc { tr_raise(ArgumentError, "wrong number of arguments (%d for %lu)", argc, b.argc); }
 	return TrVM_interpret(vm, vm.frame, b, 0, argc, argv, 0);
 }
 
 func TrVM_interpret_method_with_defaults(vm *struct TrVM, self OBJ, argc int, argv []OBJ) OBJ {
 	assert(vm.frame.method);
-	Block *b = (Block *)TR_CMETHOD(vm.frame.method).data;
+	Block *b = (Block *)((Method*)vm.frame.method).data;
 	int req_argc = b.argc - b.defaults.Len;
 	if argc < req_argc { tr_raise(ArgumentError, "wrong number of arguments (%d for %d)", argc, req_argc); }
 	if argc > (int)b.argc { tr_raise(ArgumentError, "wrong number of arguments (%d for %lu)", argc, b.argc); }
@@ -84,15 +84,15 @@ func TrVM_interpret_method_with_defaults(vm *struct TrVM, self OBJ, argc int, ar
 
 func TrVM_interpret_method_with_splat(vm *struct TrVM, self OBJ, argc int, argv []OBJ) OBJ {
 	assert(vm.frame.method);
-	Block *b = (Block *)TR_CMETHOD(vm.frame.method).data;
+	Block *b = (Block *)((Method*)vm.frame.method).data;
 	// TODO support defaults
 	assert(b.defaults.Len == 0 && "defaults with splat not supported for now");
 	if argc < (int)b.argc-1 { tr_raise(ArgumentError, "wrong number of arguments (%d for %lu)", argc, b.argc-1); }
-	argv[b.argc-1] = TrArray_new3(vm, argc - b.argc + 1, &argv[b.argc-1]);
+	argv[b.argc-1] = newArray3(vm, argc - b.argc + 1, &argv[b.argc-1]);
 	return TrVM_interpret(vm, vm.frame, b, 0, b.argc, argv, 0);
 }
 
-static OBJ TrVM_defmethod(vm *struct TrVM, TrFrame *f, OBJ name, Block *b, int meta, OBJ receiver) {
+static OBJ TrVM_defmethod(vm *struct TrVM, Frame *f, OBJ name, Block *b, int meta, OBJ receiver) {
   TrFunc *func;
   if b.arg_splat
     func = (TrFunc *) TrVM_interpret_method_with_splat;
@@ -100,16 +100,16 @@ static OBJ TrVM_defmethod(vm *struct TrVM, TrFrame *f, OBJ name, Block *b, int m
     func = (TrFunc *) TrVM_interpret_method_with_defaults;
   else
     func = (TrFunc *) TrVM_interpret_method;
-  OBJ method = TrMethod_new(vm, func, (OBJ)b, -1);
+  OBJ method = newMethod(vm, func, (OBJ)b, -1);
 	if method == TR_UNDEF { return TR_UNDEF }
   if (meta)
     TrObject_add_singleton_method(vm, receiver, name, method);
   else
-    TrModule_add_method(vm, f.class, name, method);
+    f.class.add_method(vm, name, method);
   return TR_NIL;
 }
 
-func TrVM_yield(vm *TrVM, f *TrFrame, argc int, argv []OBJ) OBJ {
+func TrVM_yield(vm *TrVM, f *Frame, argc int, argv []OBJ) OBJ {
   Closure *cl = f.closure;
   if !cl { tr_raise(LocalJumpError, "no block given"); }
   OBJ ret = TR_NIL;
@@ -140,7 +140,7 @@ func TrVM_yield(vm *TrVM, f *TrFrame, argc int, argv []OBJ) OBJ {
   return (V)
 
 // Interprets the code in b.code. Returns TR_UNDEF on error.
-static OBJ TrVM_interpret(vm *TrVM, f *TrFrame, b *Block, start, argc int, argv []OBJ, closure *Closure) {
+static OBJ TrVM_interpret(vm *TrVM, f *Frame, b *Block, start, argc int, argv []OBJ, closure *Closure) {
 	f.stack = alloca(sizeof(OBJ) * b.regc);
 
 	TrInst *ip = b.code.a + start;
@@ -185,7 +185,7 @@ static OBJ TrVM_interpret(vm *TrVM, f *TrFrame, b *Block, start, argc int, argv 
 				R[A] = B
 
 			case TR_OP_NEWARRAY:
-				R[A] = TrArray_new3(vm, B, &R[A+1])
+				R[A] = newArray3(vm, B, &R[A+1])
 
 			case TR_OP_NEWHASH:
 				R[A] = TrHash_new2(vm, B, &R[A+1])
@@ -282,16 +282,15 @@ static OBJ TrVM_interpret(vm *TrVM, f *TrFrame, b *Block, start, argc int, argv 
 					argc++;
 					*(--argv) = call.message;
 				}
-				OBJ ret = TrMethod_call(vm,
-										call.method,
-										R[GETARG_A(ci)],		// receiver
-										argc, argv,
-										GETARG_B(ci) & 1,		// splat
-										cl						// closure
-										);
+				OBJ ret = call.method.call(vm,
+											R[GETARG_A(ci)],		// receiver
+											argc, argv,
+											GETARG_B(ci) & 1,		// splat
+											cl						// closure
+											);
 
 				// Handle throw if some.
-				// A "throw" is done by returning TR_UNDEF to exit a current call frame (TrFrame)
+				// A "throw" is done by returning TR_UNDEF to exit a current call frame (Frame)
 				// until one handle it by returning are real value or continuing execution.
 				// Non-local returns and exception propagation are implemented this way.
 				// Rubinius and Python do it this way. */
@@ -391,18 +390,18 @@ static OBJ TrVM_interpret(vm *TrVM, f *TrFrame, b *Block, start, argc int, argv 
 
 /* returns the backtrace of the current call frames */
 OBJ TrVM_backtrace(vm *struct TrVM) {
-  OBJ backtrace = TrArray_new(vm);
+  OBJ backtrace = newArray(vm);
   
   if (!vm.frame) return backtrace;
   
   /* skip a frame since it's the one doing the raising */
-  TrFrame *f = vm.frame.previous;
+  Frame *f = vm.frame.previous;
   while (f) {
     OBJ str;
     char *filename = f.filename ? TR_STR_PTR(f.filename) : "?";
     if (f.method)
       str = tr_sprintf(vm, "\tfrom %s:%lu:in `%s'",
-                       filename, f.line, TR_STR_PTR(TR_CMETHOD(f.method).name));
+                       filename, f.line, TR_STR_PTR(((Method *)f.method).name));
     else
       str = tr_sprintf(vm, "\tfrom %s:%lu",
                        filename, f.line);
@@ -461,20 +460,20 @@ TrVM *TrVM_new() {
   TrModule_init(vm);
   TrClass_init(vm);
   TrObject_preinit(vm);
-  TrClass *symbolc = (TrClass*)TR_CORE_CLASS(Symbol);
-  TrClass *modulec = (TrClass*)TR_CORE_CLASS(Module);
-  TrClass *classc = (TrClass*)TR_CORE_CLASS(Class);
-  TrClass *methodc = (TrClass*)TR_CORE_CLASS(Method);
-  TrClass *objectc = (TrClass*)TR_CORE_CLASS(Object);
+  Class *symbolc = (Class*)TR_CORE_CLASS(Symbol);
+  Class *modulec = (Class*)TR_CORE_CLASS(Module);
+  Class *classc = (Class*)TR_CORE_CLASS(Class);
+  Class *methodc = (Class*)TR_CORE_CLASS(Method);
+  Class *objectc = (Class*)TR_CORE_CLASS(Object);
   /* set proper superclass has Object is defined last */
   symbolc.super = modulec.super = methodc.super = (OBJ)objectc;
   classc.super = (OBJ)modulec;
   /* inject core classes metaclass */
-  symbolc.class = TrMetaClass_new(vm, objectc.class);
-  modulec.class = TrMetaClass_new(vm, objectc.class);
-  classc.class = TrMetaClass_new(vm, objectc.class);
-  methodc.class = TrMetaClass_new(vm, objectc.class);
-  objectc.class = TrMetaClass_new(vm, objectc.class);
+  symbolc.class = newMetaClass(vm, objectc.class);
+  modulec.class = newMetaClass(vm, objectc.class);
+  classc.class = newMetaClass(vm, objectc.class);
+  methodc.class = newMetaClass(vm, objectc.class);
+  objectc.class = newMetaClass(vm, objectc.class);
   
   /* Some symbols are created before Object, so make sure all have proper class. */
   TR_KH_EACH(vm.symbols, i, sym, {

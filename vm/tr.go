@@ -24,34 +24,17 @@
 #define TR_COBJECT(X)        ((TrObject*)(X))
 #define TR_TYPE_ERROR(T)     TR_THROW(EXCEPTION, TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " #T)))
 #define TR_CTYPE(X,T)        ((TR_IS_A(X,T) ? 0 : TR_TYPE_ERROR(T)),(Tr##T*)(X))
-#define TR_CCLASS(X)         ((TR_IS_A(X,Class) || TR_IS_A(X,Module) ? 0 : TR_TYPE_ERROR(T)),(TrClass*)(X))
-#define TR_CMODULE(X)        TR_CCLASS(X)
+#define TR_CCLASS(X)         ((TR_IS_A(X,Class) || TR_IS_A(X,Module) ? 0 : TR_TYPE_ERROR(T)),(Class *)(X))
 #define TR_CARRAY(X)         TR_CTYPE(X,Array)
 #define TR_CHASH(X)          TR_CTYPE(X,Hash)
 #define TR_CRANGE(X)         TR_CTYPE(X,Range)
 #define TR_CREGEXP(X)        TR_CTYPE(X,Regexp)
 #define TR_CSTRING(X)        ((TR_IS_A(X,String) || TR_IS_A(X,Symbol) ? 0 : TR_TYPE_ERROR(T)),(TrString*)(X))
-#define TR_CMETHOD(X)        ((TrMethod*)X)
 #define TR_CBINDING(X)       TR_CTYPE(X,Binding)
 
 /* string macros */
 #define TR_STR_PTR(S)        (TR_CSTRING(S).ptr)
 #define TR_STR_LEN(S)        (TR_CSTRING(S).len)
-
-/* array macros */
-#define TR_ARRAY_PUSH(X,I)   kv_push(OBJ, ((TrArray*)(X)).kv, (I))
-#define TR_ARRAY_AT(X,I)     kv_A((TR_CARRAY(X)).kv, (I))
-#define TR_ARRAY_SIZE(X)     kv_size(TR_CARRAY(X).kv)
-#define TR_ARRAY_EACH(T,I,V,B) ({ \
-    TrArray *__a##V = TR_CARRAY(T); \
-    if (kv_size(__a##V.kv) != 0) { \
-      size_t I; \
-      for (I = 0; I < kv_size(__a##V.kv); I++) { \
-        OBJ V = kv_A(__a##V.kv, I); \
-        B \
-      } \
-    } \
-  })
 
 /* raw hash macros */
 #define TR_KH_GET(KH,K) ({ \
@@ -111,8 +94,7 @@
 })
 #define TR_CORE_CLASS(T)     vm.classes[TR_T_##T]
 #define TR_INIT_CORE_CLASS(T,S) \
-  TR_CORE_CLASS(T) = TrObject_const_set(vm, vm.self, tr_intern(#T), \
-                                   TrClass_new(vm, tr_intern(#T), TR_CORE_CLASS(S)))
+  TR_CORE_CLASS(T) = TrObject_const_set(vm, vm.self, tr_intern(#T), newClass(vm, tr_intern(#T), TR_CORE_CLASS(S)))
 
 /* API macros */
 #define tr_getivar(O,N)      TR_KH_GET(TR_COBJECT(O).ivars, tr_intern(N))
@@ -122,10 +104,10 @@
 #define tr_intern(S)         TrSymbol_new(vm, (S))
 #define tr_raise(T,M,...)    TR_THROW(EXCEPTION, TrException_new(vm, vm.c##T, tr_sprintf(vm, (M), ##__VA_ARGS__)))
 #define tr_raise_errno(M)    tr_raise(SystemCallError, "%s: %s", strerror(errno), (M))
-#define tr_def(C,N,F,A)      TrModule_add_method(vm, (C), tr_intern(N), TrMethod_new(vm, (TrFunc *)(F), TR_NIL, (A)))
-#define tr_metadef(O,N,F,A)  TrObject_add_singleton_method(vm, (O), tr_intern(N), TrMethod_new(vm, (TrFunc *)(F), TR_NIL, (A)))
-#define tr_defclass(N,S)     TrObject_const_set(vm, vm.self, tr_intern(N), TrClass_new(vm, tr_intern(N), S))
-#define tr_defmodule(N)      TrObject_const_set(vm, vm.self, tr_intern(N), TrModule_new(vm, tr_intern(N)))
+#define tr_def(C,N,F,A)      (C).add_method(vm, tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
+#define tr_metadef(O,N,F,A)  TrObject_add_singleton_method(vm, (O), tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
+#define tr_defclass(N,S)     TrObject_const_set(vm, vm.self, tr_intern(N), newClass(vm, tr_intern(N), S))
+#define tr_defmodule(N)      TrObject_const_set(vm, vm.self, tr_intern(N), newModule(vm, tr_intern(N)))
 
 #define tr_send(R,MSG,...)   ({ \
   OBJ __argv[] = { (MSG), ##__VA_ARGS__ }; \
@@ -157,7 +139,6 @@ typedef enum {
 } TR_THROW_REASON;
 
 struct TrVM;
-struct TrFrame;
 
 type TrCallSite struct {
   OBJ class;
@@ -173,67 +154,49 @@ type TrUpval struct {
 }
 
 typedef OBJ (TrFunc)(vm *struct TrVM, OBJ receiver, ...);
-type TrMethod struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
-  TrFunc *func;
-  OBJ data;
-  OBJ name;
-  int arity;
-}
-
-type TrFrame struct {
-	closure					*Closure;
-	method					*TrMethod;				// current called method
-	stack, upvals			*OBJ;
-	self, class, filename	OBJ;
-	line					size_t;
-	previous				*TrFrame;
-}
 
 type TrBinding struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
-  TrFrame *frame;
+	type 			TR_T;
+	class			OBJ;
+	ivars			*khash_t(OBJ);
+  	frame			*Frame;
 }
 
 type TrVM struct {
-  khash_t(str) *symbols;
-  khash_t(OBJ) *globals;
-  khash_t(OBJ) *consts;           /* TODO this goes in modules */
-  OBJ classes[TR_T_MAX];          /* core classes */
-  TrFrame *top_frame;             /* top level frame */
-  TrFrame *frame;                 /* current frame */
-  int cf;                         /* current frame number */
-  OBJ self;                       /* root object */
-  int debug;
-  int throw_reason;
-  OBJ throw_value;
+	symbols			*khash_t(str);
+	globals			*khash_t(OBJ);
+	consts			*khash_t(OBJ);           /* TODO this goes in modules */
+	classes			[TR_T_MAX]OBJ;          /* core classes */
+	top_frame		*Frame;             /* top level frame */
+	frame			*Frame;                 /* current frame */
+	cf				int;                         /* current frame number */
+	self			OBJ;                       /* root object */
+	debug			int;
+	throw_reason	int;
+	throw_value	OBJ;
   
-  /* exceptions */
-  OBJ cException;
-  OBJ cScriptError;
-  OBJ cSyntaxError;
-  OBJ cStandardError;
-  OBJ cArgumentError;
-  OBJ cRuntimeError;
-  OBJ cRegexpError;
-  OBJ cTypeError;
-  OBJ cSystemCallError;
-  OBJ cIndexError;
-  OBJ cLocalJumpError;
-  OBJ cSystemStackError;
-  OBJ cNameError;
-  OBJ cNoMethodError;
+	// exceptions
+	cException			OBJ;
+	cScriptError		OBJ;
+	cSyntaxError		OBJ;
+	cStandardError		OBJ;
+	cArgumentError		OBJ;
+	cRuntimeError		OBJ;
+	cRegexpError		OBJ;
+	cTypeError			OBJ;
+	cSystemCallError	OBJ;
+	cIndexError			OBJ;
+	cLocalJumpError		OBJ;
+	cSystemStackError	OBJ;
+	cNameError			OBJ;
+	cNoMethodError		OBJ;
   
-  /* cached objects */
-  OBJ sADD;
-  OBJ sSUB;
-  OBJ sLT;
-  OBJ sNEG;
-  OBJ sNOT;
+	// cached objects
+	sADD				OBJ;
+	sSUB				OBJ;
+	sLT					OBJ;
+	sNEG				OBJ;
+	sNOT				OBJ;
 }
 
 type TrObject struct {
@@ -241,17 +204,6 @@ type TrObject struct {
   OBJ class;
   khash_t(OBJ) *ivars;
 }
-
-type TrClass struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
-  OBJ name;
-  OBJ super;
-  khash_t(OBJ) *methods;
-  int meta:1;
-}
-type TrModule TrClass;
 
 type TrString struct {
   TR_T type;
@@ -270,13 +222,6 @@ type TrRange struct {
   OBJ first;
   OBJ last;
   int exclusive;
-}
-
-type TrArray struct {
-	type		TR_T;
-	class		OBJ;
-	ivars		*khash_t(OBJ);
-	kv			ObjectVector;
 }
 
 type TrHash struct {
@@ -313,12 +258,6 @@ void TrString_init(vm *struct TrVM);
 /* number */
 void TrFixnum_init(vm *struct TrVM);
 
-/* array */
-OBJ TrArray_new(vm *struct TrVM);
-OBJ TrArray_new2(vm *struct TrVM, int argc, ...);
-OBJ TrArray_new3(vm *struct TrVM, int argc, OBJ items[]);
-void TrArray_init(vm *struct TrVM);
-
 /* hash */
 OBJ TrHash_new(vm *struct TrVM);
 OBJ TrHash_new2(vm *struct TrVM, size_t n, OBJ items[]);
@@ -339,26 +278,8 @@ OBJ TrObject_add_singleton_method(vm *struct TrVM, OBJ self, OBJ name, OBJ metho
 void TrObject_preinit(vm *struct TrVM);
 void TrObject_init(vm *struct TrVM);
 
-/* module */
-OBJ TrModule_new(vm *struct TrVM, OBJ name);
-OBJ TrModule_instance_method(vm *struct TrVM, OBJ self, OBJ name);
-OBJ TrModule_add_method(vm *struct TrVM, OBJ self, OBJ name, OBJ method);
-OBJ TrModule_include(vm *struct TrVM, OBJ self, OBJ mod);
-void TrModule_init(vm *struct TrVM);
-
 /* kernel */
 void TrKernel_init(vm *struct TrVM);
-
-/* class */
-OBJ TrClass_new(vm *struct TrVM, OBJ name, OBJ super);
-OBJ TrMetaClass_new(vm *struct TrVM, OBJ super);
-OBJ TrClass_allocate(vm *struct TrVM, OBJ self);
-void TrClass_init(vm *struct TrVM);
-
-/* method */
-OBJ TrMethod_new(vm *struct TrVM, TrFunc *func, OBJ data, int arity);
-void TrMethod_init(vm *struct TrVM);
-void TrBinding_init(vm *struct TrVM);
 
 /* primitive */
 void TrPrimitive_init(vm *struct TrVM);

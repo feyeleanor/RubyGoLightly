@@ -1,6 +1,8 @@
-#include "tr.h"
-#include "internal.h"
-#include "call.h"
+import (
+	"tr";
+	"internal";
+	"call";
+)
 
 OBJ TrObject_alloc(vm *struct TrVM, OBJ class) {
   TrObject *o = TR_INIT_CORE_OBJECT(Object);
@@ -19,7 +21,7 @@ int TrObject_type(vm *struct TrVM, OBJ obj) {
 }
 
 OBJ TrObject_method(vm *struct TrVM, OBJ self, OBJ name) {
-  return TrModule_instance_method(vm, TR_CLASS(self), name);
+  return TR_CLASS(self).instance_method(vm, name);
 }
 
 OBJ TrObject_method_missing(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
@@ -32,9 +34,9 @@ OBJ TrObject_send(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
   OBJ method = TrObject_method(vm, self, argv[0]);
   if method == TR_NIL {
     method = TrObject_method(vm, self, tr_intern("method_missing"));
-    return TrMethod_call(vm, method, self, argc, argv, 0, 0);
+    return method.call(vm, self, argc, argv, 0, 0);
   } else {
-    return TrMethod_call(vm, method, self, argc-1, argv+1, 0, 0);
+    return method.call(vm, self, argc-1, argv+1, 0, 0);
   }
 }
 
@@ -56,9 +58,9 @@ OBJ TrObject_const_set(vm *struct TrVM, OBJ self, OBJ name, OBJ value) {
 OBJ TrObject_add_singleton_method(vm *struct TrVM, OBJ self, OBJ name, OBJ method) {
   TrObject *o = TR_COBJECT(self);
   if (!TR_CCLASS(o.class).meta)
-    o.class = TrMetaClass_new(vm, o.class);
+    o.class = newMetaClass(vm, o.class);
   assert(TR_CCLASS(o.class).meta && "first class must be the metaclass");
-  TrModule_add_method(vm, o.class, name, method);
+  o.class.add_method(vm, name, method);
   return method;
 }
 

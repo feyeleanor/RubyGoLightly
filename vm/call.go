@@ -2,11 +2,21 @@
 
 #include <alloca.h>
 
+type Frame struct {
+	closure					*Closure;
+	method					*Method;				// current called method
+	stack, upvals			*OBJ;
+	self, class, filename	OBJ;
+	line					size_t;
+	previous				*Frame;
+}
+
+
 #define TR_WITH_FRAME(SELF,CLASS,CLOS,BODY) ({ \
   /* push a frame */ \
   if (++vm.cf >= TR_MAX_FRAMES) { tr_raise(SystemStackError, "Stack overflow"); } \
-  TrFrame __f; \
-  TrFrame *__fp = &__f; \
+  Frame __f; \
+  Frame *__fp = &__f; \
   __f.previous = vm.frame; \
   if (vm.cf == 0) vm.top_frame = __fp; \
   vm.frame = __fp; \
@@ -23,13 +33,13 @@
   vm.frame = vm.frame.previous; \
 })
 
-func TrMethod_call(vm *TrVM, self, receiver OBJ, argc int, args *OBJ, splat int, cl *Closure) OBJ {
+func (self *Method) call(vm *TrVM, receiver OBJ, argc int, args *OBJ, splat int, cl *Closure) OBJ {
   OBJ ret = TR_NIL;
-  TrFrame *f = NULL;
+  Frame *f = nil;
 
   TR_WITH_FRAME(receiver, TR_CLASS(receiver), cl, {
     f = vm.frame;
-    TrMethod *m = f.method = TR_CMETHOD(self);
+    Method *m = f.method = (Method *) self;
     TrFunc *func = f.method.func;
 
     /* splat last arg is needed */

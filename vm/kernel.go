@@ -1,7 +1,7 @@
 #include "tr.h"
 #include "internal.h"
 
-OBJ TrBinding_new(vm *struct TrVM, TrFrame *f) {
+func TrBinding_new(vm *TrVM, f *Frame) OBJ {
   TrBinding *b = TR_INIT_CORE_OBJECT(Binding);
   b.frame = f;
   return (OBJ)b;
@@ -25,7 +25,7 @@ static OBJ TrKernel_eval(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
 	if argc < 1 { tr_raise(ArgumentError, "string argument required") }
 	if argc > 4 { tr_raise(ArgumentError, "Too much arguments") }
 	OBJ string = argv[0];
-	TrFrame *f = (argc > 1 && argv[1]) ? TR_CBINDING(argv[1]).frame : vm.frame;
+	Frame *f = (argc > 1 && argv[1]) ? TR_CBINDING(argv[1]).frame : vm.frame;
 	char *filename = (argc > 2 && argv[1]) ? TR_STR_PTR(argv[2]) : "<eval>";
 	size_t lineno = argc > 3 ? TR_FIX2INT(argv[3]) : 0;
 	Block *blk = Block_compile(vm, TR_STR_PTR(string), filename, lineno);
@@ -63,7 +63,7 @@ static OBJ TrKernel_raise(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
 
 void TrKernel_init(vm *struct TrVM) {
   OBJ m = tr_defmodule("Kernel");
-  TrModule_include(vm, TR_CORE_CLASS(Object), m);
+  TR_CORE_CLASS(Object).include(vm, m);
   tr_def(m, "puts", TrKernel_puts, -1);
   tr_def(m, "eval", TrKernel_eval, -1);
   tr_def(m, "load", TrKernel_load, 1);
