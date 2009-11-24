@@ -36,7 +36,7 @@ func TrSymbol_new(vm *struct TrVM, str const char *) OBJ {
     TR_MEMCPY_N(s.ptr, str, char, s.len);
     s.ptr[s.len] = '\0';
     
-    id = (OBJ)s;
+    id = OBJ(s);
     TrSymbol_add(vm, s.ptr, id);
   }
   return id;
@@ -68,7 +68,7 @@ func TrString_new(vm *struct TrVM, str const char *, len size_t) OBJ {
   s.interned = 0;
   TR_MEMCPY_N(s.ptr, str, char, s.len);
   s.ptr[s.len] = '\0';
-  return (OBJ)s;
+  return OBJ(s);
 }
 
 func TrString_new2(vm *struct TrVM, str const char *) OBJ {
@@ -81,7 +81,7 @@ func TrString_new3(vm *struct TrVM, len size_t) OBJ {
   s.ptr = TR_ALLOC_N(char, s.len+1);
   s.interned = 0;
   s.ptr[s.len] = '\0';
-  return (OBJ)s;
+  return OBJ(s);
 }
 
 func TrString_add(vm *struct TrVM, self, other OBJ) OBJ {
@@ -109,7 +109,7 @@ func TrString_replace(vm *struct TrVM, self, other OBJ) OBJ {
 }
 
 func TrString_cmp(vm *struct TrVM, self, other OBJ) OBJ {
-  if (!TR_IS_A(other, String)) return TR_INT2FIX(-1);
+  if (!other.(String)) return TR_INT2FIX(-1);
   return TR_INT2FIX(strcmp(TR_STR_PTR(self), TR_STR_PTR(other)));
 }
 

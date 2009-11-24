@@ -7,7 +7,7 @@ import (
 OBJ TrObject_alloc(vm *struct TrVM, OBJ class) {
   TrObject *o = TR_INIT_CORE_OBJECT(Object);
   if (class) o.class = class;
-  return (OBJ) o;
+  return OBJ(o);
 }
 
 int TrObject_type(vm *struct TrVM, OBJ obj) {
@@ -67,7 +67,7 @@ OBJ TrObject_add_singleton_method(vm *struct TrVM, OBJ self, OBJ name, OBJ metho
 static OBJ TrObject_class(vm *struct TrVM, OBJ self) {
   OBJ class = TR_CLASS(self);
   /* find the first non-metaclass */
-  while (class && (!TR_IS_A(class, Class) || TR_CCLASS(class).meta))
+  while (class && (!class.(Class) || TR_CCLASS(class).meta))
     class = TR_CCLASS(class).super;
   assert(class && "classless object");
   return class;

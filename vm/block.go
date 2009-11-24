@@ -42,7 +42,7 @@ func newBlock(compiler *Compiler, parent *Block) *Block {
 	return block;
 }
 
-#define INSPECT_K(K)  (TR_IS_A(K, Symbol) ? TR_STR_PTR(K) : (sprintf(buf, "%d", TR_FIX2INT(K)), buf))
+#define INSPECT_K(K)  (K.(Symbol) ? TR_STR_PTR(K) : (sprintf(buf, "%d", TR_FIX2INT(K)), buf))
 
 func (b *Block) dump2(vm *TrVM, level int) OBJ {
 	char buf[10];

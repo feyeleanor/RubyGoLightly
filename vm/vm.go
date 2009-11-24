@@ -41,7 +41,7 @@ func TrVM_lookup(vm *struct TrVM, b *Block, receiver, msg OBJ, ip *TrInst) OBJ {
     SETARG_C(*boing, kv_size(b.sites)-1);	// CallSite index
   }
   
-  return (OBJ)s;
+  return OBJ(s);
 }
 
 func TrVM_defclass(vm *TrVM, name OBJ, b *Block, module int, super OBJ) OBJ {
@@ -100,7 +100,7 @@ static OBJ TrVM_defmethod(vm *struct TrVM, Frame *f, OBJ name, Block *b, int met
     func = (TrFunc *) TrVM_interpret_method_with_defaults;
   else
     func = (TrFunc *) TrVM_interpret_method;
-  OBJ method = newMethod(vm, func, (OBJ)b, -1);
+  OBJ method = newMethod(vm, func, OBJ(b), -1);
 	if method == TR_UNDEF { return TR_UNDEF }
   if (meta)
     TrObject_add_singleton_method(vm, receiver, name, method);
@@ -203,7 +203,7 @@ static OBJ TrVM_interpret(vm *TrVM, f *Frame, b *Block, start, argc int, argv []
 				RETURN(TR_UNDEF)
 
 			case TR_OP_YIELD:
-				if (OBJ)(R[A] = TrVM_yield(vm, f, B, &R[A+1])) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(R[A] = TrVM_yield(vm, f, B, &R[A+1])) == TR_UNDEF { RETURN(TR_UNDEF) }
     
     		// variable and consts
     		case TR_OP_SETUPVAL:
@@ -240,7 +240,7 @@ static OBJ TrVM_interpret(vm *TrVM, f *Frame, b *Block, start, argc int, argv []
     
     		// method calling
     		case TR_OP_LOOKUP:
-				if (OBJ)(call = (TrCallSite*)TrVM_lookup(vm, b, R[A], k[Bx], ip)) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(call = (TrCallSite*)TrVM_lookup(vm, b, R[A], k[Bx], ip)) == TR_UNDEF { RETURN(TR_UNDEF) }
 
     		case TR_OP_CACHE:
 				// TODO how to expire cache?
@@ -317,18 +317,18 @@ static OBJ TrVM_interpret(vm *TrVM, f *Frame, b *Block, start, argc int, argv []
     
 			// definition
 			case TR_OP_DEF:
-				if (OBJ)TrVM_defmethod(vm, f, k[Bx], blocks[A], 0, 0) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(TrVM_defmethod(vm, f, k[Bx], blocks[A], 0, 0)) == TR_UNDEF { RETURN(TR_UNDEF) }
 
 			case TR_OP_METADEF:
-				if (OBJ)TrVM_defmethod(vm, f, k[Bx], blocks[A], 1, R[nA]) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(TrVM_defmethod(vm, f, k[Bx], blocks[A], 1, R[nA])) == TR_UNDEF { RETURN(TR_UNDEF) }
 				ip++
 
 			case TR_OP_CLASS:
-				if (OBJ)TrVM_defclass(vm, k[Bx], blocks[A], 0, R[nA]) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(TrVM_defclass(vm, k[Bx], blocks[A], 0, R[nA])) == TR_UNDEF { RETURN(TR_UNDEF) }
 				ip++
 
 			case TR_OP_MODULE:
-				if (OBJ)TrVM_defclass(vm, k[Bx], blocks[A], 1, 0) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(TrVM_defclass(vm, k[Bx], blocks[A], 1, 0)) == TR_UNDEF { RETURN(TR_UNDEF) }
     
 			// jumps
 			case TR_OP_JMP:
@@ -466,8 +466,8 @@ TrVM *TrVM_new() {
   Class *methodc = (Class*)TR_CORE_CLASS(Method);
   Class *objectc = (Class*)TR_CORE_CLASS(Object);
   /* set proper superclass has Object is defined last */
-  symbolc.super = modulec.super = methodc.super = (OBJ)objectc;
-  classc.super = (OBJ)modulec;
+  symbolc.super = modulec.super = methodc.super = OBJ(objectc);
+  classc.super = OBJ(modulec);
   /* inject core classes metaclass */
   symbolc.class = newMetaClass(vm, objectc.class);
   modulec.class = newMetaClass(vm, objectc.class);
@@ -477,7 +477,7 @@ TrVM *TrVM_new() {
   
   /* Some symbols are created before Object, so make sure all have proper class. */
   TR_KH_EACH(vm.symbols, i, sym, {
-    TR_COBJECT(sym).class = (OBJ)symbolc;
+    TR_COBJECT(sym).class = OBJ(symbolc);
   });
   
   /* bootstrap rest of core classes, order is no longer important here */

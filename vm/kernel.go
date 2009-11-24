@@ -4,7 +4,7 @@
 func TrBinding_new(vm *TrVM, f *Frame) OBJ {
   TrBinding *b = TR_INIT_CORE_OBJECT(Binding);
   b.frame = f;
-  return (OBJ)b;
+  return OBJ(b);
 }
 
 void TrBinding_init(vm *struct TrVM) {
@@ -45,7 +45,7 @@ static OBJ TrKernel_raise(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
 			e = tr_getglobal("$!");
 
 		case 1:
-			if TR_IS_A(argv[0], String) {
+			if argv[0].(String) {
 				e = TrException_new(vm, vm.cRuntimeError, argv[0]);
 			} else {
 				e = tr_send2(argv[0], "exception");

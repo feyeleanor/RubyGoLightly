@@ -22,7 +22,7 @@ func TrNode_new(vm *struct TrVM, type TrNodeType, a, b, c OBJ, line size_t) OBJ 
 	n.args[1] = b;
 	n.args[2] = c;
 	n.line = line;
-	return (OBJ)n;
+	return OBJ(n);
 }
 
 /* compiler */

@@ -17,11 +17,11 @@ OBJ TrRegexp_new(vm *struct TrVM, char *pattern, int options) {
     NULL);                /* use default character tables */
   
   if (r.re == NULL) {
-    TrRegex_free(vm, (OBJ)r);
+    TrRegex_free(vm, OBJ(r));
     tr_raise(RegexpError, "compilation failed at offset %d: %s", erroffset, error);
   }
     
-  return (OBJ)r;
+  return OBJ(r);
 }
 
 OBJ TrRegexp_compile(vm *struct TrVM, OBJ self, OBJ pattern) {

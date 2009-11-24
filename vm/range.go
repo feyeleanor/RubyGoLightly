@@ -6,7 +6,7 @@ OBJ TrRange_new(vm *struct TrVM, OBJ first, OBJ last, int exclusive) {
   r.first = first;
   r.last = last;
   r.exclusive = exclusive;
-  return (OBJ)r;
+  return OBJ(r);
 }
 
 static OBJ TrRange_first(vm *struct TrVM, OBJ self) { return TR_CRANGE(self).first; }

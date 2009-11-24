@@ -6,12 +6,12 @@ import (
 
 // rephrase arrays in terms of the stdlib vector which is dynamically expandable
 
-/* array macros */
+// array macros
 #define TR_ARRAY_PUSH(X,I)   kv_push(OBJ, ((TrArray*)(X)).kv, (I))
-#define TR_ARRAY_AT(X,I)     kv_A((TR_CARRAY(X)).kv, (I))
-#define TR_ARRAY_SIZE(X)     kv_size(TR_CARRAY(X).kv)
+#define TR_ARRAY_AT(X,I)     kv_A((TR_CTYPE(X, Array)).kv, (I))
+#define TR_ARRAY_SIZE(X)     kv_size(TR_CTYPE(X, Array).kv)
 #define TR_ARRAY_EACH(T,I,V,B) ({ \
-    Array *__a##V = TR_CARRAY(T); \
+    Array *__a##V = TR_CTYPE(T, Array); \
     if (kv_size(__a##V.kv) != 0) { \
       size_t I; \
       for (I = 0; I < kv_size(__a##V.kv); I++) { \
@@ -31,7 +31,7 @@ type Array struct {
 func newArray(vm struct TrVM *) OBJ {
   Array *a = TR_INIT_CORE_OBJECT(Array);
   kv_init(a.kv);
-  return (OBJ)a;
+  return OBJ(a);
 }
 
 // Uses variadic ... parameter which replaces the mechanism used by stdarg.h
@@ -72,7 +72,7 @@ func (self *Array) at(vm struct TrVM *, at OBJ) OBJ {
 func (self *Array) set(vm struct TrVM *, at, x OBJ) OBJ {
   int i = self.at2index(vm, at);
   if (i < 0) tr_raise(IndexError, "index %d out of array", i);
-  kv_a(OBJ, (TR_CARRAY(self)).kv, i) = x;
+  kv_a(OBJ, (TR_CTYPE(self, Array)).kv, i) = x;
   return x;
 }
 

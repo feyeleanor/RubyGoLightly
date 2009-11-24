@@ -35,7 +35,7 @@ OBJ TrException_new(vm *struct TrVM, OBJ class, OBJ message) {
   OBJ e = TrObject_alloc(vm, class);
   tr_setivar(e, "@message", message);
   tr_setivar(e, "@backtrace", TR_NIL);
-  return (OBJ)e;
+  return OBJ(e);
 }
 
 static OBJ TrException_cexception(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {

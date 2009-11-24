@@ -4,7 +4,7 @@
 OBJ TrHash_new(vm *struct TrVM) {
   TrHash *h = TR_INIT_CORE_OBJECT(Hash);
   h.kh = kh_init(OBJ);
-  return (OBJ)h;
+  return OBJ(h);
 }
 
 OBJ TrHash_new2(vm *struct TrVM, size_t n, OBJ items[]) {
@@ -15,7 +15,7 @@ OBJ TrHash_new2(vm *struct TrVM, size_t n, OBJ items[]) {
     khiter_t k = kh_put(OBJ, h.kh, items[i], &ret);
     kh_value(h.kh, k) = items[i+1];
   }
-  return (OBJ)h;
+  return OBJ(h);
 }
 
 static OBJ TrHash_size(vm *struct TrVM, OBJ self) {

@@ -33,7 +33,7 @@ func newIModule(vm *struct TrVM, OBJ module, OBJ super) OBJ {
   im.name = m.name;
   im.methods = m.methods;
   im.super = super;
-  return (OBJ)im;
+  return OBJ(im);
 }
 
 /* module */
@@ -43,7 +43,17 @@ func newModule(vm *struct TrVM, OBJ name) OBJ {
   m.name = name;
   m.methods = kh_init(OBJ);
   m.meta = 0;
-  return (OBJ)m;
+  return OBJ(m);
+}
+
+#define TR_CCLASS(X)         ((X.(Class) || X.(Module) ? 0 : TR_TYPE_ERROR(T)), (Class *)(X))
+func (self *Class) cclass() *Class {
+	if self.(Class) || self.(Module) {
+		nil
+	} else {
+		TR_TYPE_ERROR(T)
+	}
+	self
 }
 
 func (self *Module) instance_method(vm *TrVM, name OBJ) OBJ {
@@ -97,18 +107,18 @@ func newClass(vm *TrVM, OBJ name, OBJ super) OBJ {
   /* if VM is booting, those might not be set */
   if (super && TR_CCLASS(super).class) c.class = newMetaClass(vm, TR_CCLASS(super).class);
   c.super = super;
-  return (OBJ)c;
+  return OBJ(c);
 }
 
 func (self *Class) allocate(vm *TrVM) OBJ {
   TrObject *o = TR_INIT_CORE_OBJECT(Object);
   o.class = self;
-  return (OBJ)o;
+  return OBJ(o);
 }
 
 func (self *Class) superclass(vm *TrVM) OBJ {
   OBJ super = TR_CCLASS(self).super;
-  while (super && !TR_IS_A(super, Class))
+  while (super && !super.(Class))
     super = TR_CCLASS(super).super;
   return super;
 }
@@ -128,7 +138,7 @@ func newMetaClass(vm *TrVM, OBJ super) OBJ {
   mc = newClass(vm, name, 0);
   mc.super = super;
   mc.meta = 1;
-  return (OBJ)mc;
+  return OBJ(mc);
 }
 
 /* method */
@@ -138,7 +148,7 @@ func newMethod(vm *TrVM, function *TrFunc, data OBJ, arity int) OBJ {
   m.func = function;
   m.data = data;
   m.arity = arity;
-  return (OBJ)m;
+  return OBJ(m);
 }
 
 OBJ (self *Method) name(vm *TrVM) { return ((Method *) self).name; }
