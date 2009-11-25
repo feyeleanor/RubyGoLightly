@@ -59,7 +59,7 @@ OBJ TrRegexp_match(vm *struct TrVM, OBJ self, OBJ str) {
   for (i = 0; i < rc; i++) {
     char *substring_start = subject + ovector[2*i];
     int substring_length = ovector[2*i+1] - ovector[2*i];
-    TR_ARRAY_PUSH(data, TrString_new(vm, substring_start, substring_length));
+    data.kv.Push(TrString_new(vm, substring_start, substring_length));
   }
   
   return data;

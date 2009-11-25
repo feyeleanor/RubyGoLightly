@@ -13,7 +13,7 @@ import (
 	"call";
 )
 
-func TrVM_lookup(vm *struct TrVM, b *Block, receiver, msg OBJ, ip *TrInst) OBJ {
+func TrVM_lookup(vm *TrVM, b *Block, receiver, msg OBJ, ip *TrInst) OBJ {
   OBJ method = TrObject_method(vm, receiver, msg);
   if method == TR_UNDEF { return TR_UNDEF }
 
@@ -38,7 +38,7 @@ func TrVM_lookup(vm *struct TrVM, b *Block, receiver, msg OBJ, ip *TrInst) OBJ {
     SET_OPCODE(*boing, TR_OP_CACHE);
     SETARG_A(*boing, GETARG_A(*ip)); 		// receiver register
     SETARG_B(*boing, 1);					// jmp
-    SETARG_C(*boing, kv_size(b.sites)-1);	// CallSite index
+    SETARG_C(*boing, b.sites.Len()-1);	// CallSite index
   }
   
   return OBJ(s);
@@ -156,7 +156,7 @@ static OBJ TrVM_interpret(vm *TrVM, f *Frame, b *Block, start, argc int, argv []
 
 	// transfer locals
 	if argc > 0 { 
-		assert(argc <= (int)kv_size(b.locals) && "can't fit args in locals");
+		assert(argc <= (int)b.locals.Len() && "can't fit args in locals");
 		TR_MEMCPY_N(stack, argv, OBJ, argc);
 	}
   
@@ -265,7 +265,7 @@ static OBJ TrVM_interpret(vm *TrVM, f *Frame, b *Block, start, argc int, argv []
 					//	return  0
 
 					cl = newClosure(vm, blocks[C-1], f.self, f.class, f.closure);
-					size_t n, nupval = kv_size(cl.block.upvals);
+					size_t n, nupval = cl.block.upvals.Len();
 					for (n = 0; n < nupval; ++n) {
 						(i = *++ip)
 						if OPCODE == TR_OP_MOVE {
@@ -405,7 +405,7 @@ OBJ TrVM_backtrace(vm *struct TrVM) {
     else
       str = tr_sprintf(vm, "\tfrom %s:%lu",
                        filename, f.line);
-    TR_ARRAY_PUSH(backtrace, str);
+    backtrace.kv.Push(str);
     
     f = f.previous;
   }

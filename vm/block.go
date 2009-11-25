@@ -8,11 +8,11 @@ import (
 
 type Block struct {
 	// static
-	k			[]OBJ;
+	k			*Vector;
 	strings		*StringVector;
-	locals		[]OBJ;
-	upvals		[]OBJ;
-	code		[]TrInst;
+	locals		*Vector;
+	upvals		*Vector;
+	code		*Vector;
 	defaults	*IntVector;
 	blocks		[]Block;
 	regc		int;
@@ -28,17 +28,17 @@ type Block struct {
 
 func newBlock(compiler *Compiler, parent *Block) *Block {
 	block = new(Block);
-	block.defaults = NewIntVector(0)
-	block.strings = NewStringVector(0)
+	block.defaults = IntVector.New(0)
+	block.strings = StringVector.New(0)
 	block.filename = compiler.filename;
 	block.line = 1;
 	block.regc = 0;
 	block.argc = 0;
 	block.parent = parent;
-	kv_init(block.k);
-	kv_init(block.code);
-	kv_init(block.locals);
-	kv_init(block.sites);
+	block.k = Vector.New(0);
+	block.code = Vector.New(0);
+	block.locals = Vector.New(0);
+	block.sites = Vector.New(0);
 	return block;
 }
 
@@ -49,7 +49,7 @@ func (b *Block) dump2(vm *TrVM, level int) OBJ {
   
 	size_t i;
 	fmt.Println("; block definition: %p (level %d)", b, level);
-	fmt.Println("; %lu registers ; %lu nested blocks", b.regc, kv_size(b.blocks));
+	fmt.Println("; %lu registers ; %lu nested blocks", b.regc, b.blocks.Len());
 	fmt.Printf("; %lu args ", b.argc);
 	if (b.arg_splat) { fmt.Printf(", splat"); }
 	fmt.Println()
@@ -58,28 +58,28 @@ func (b *Block) dump2(vm *TrVM, level int) OBJ {
 		for (i = 0; i < b.defaults.Len; ++i) fmt.Printf("%d ", b.defaults.At(i));
 		fmt.Println();
 	}
-	for (i = 0; i < kv_size(b.locals); ++i) { fmt.Println(".local  %-8s ; %lu", INSPECT_K(kv_A(b.locals, i)), i); }
-	for (i = 0; i < kv_size(b.upvals); ++i) { fmt.Println(".upval  %-8s ; %lu", INSPECT_K(kv_A(b.upvals, i)), i); }
-	for (i = 0; i < kv_size(b.k); ++i) { fmt.Println(".value  %-8s ; %lu", INSPECT_K(kv_A(b.k, i)), i); }
-	for (i = 0; i < b.strings.Len; ++i) { fmt.Println(".string %-8s ; %lu", kv_A(b.strings, i), i); }
-	for (i = 0; i < kv_size(b.code); ++i) {
-		TrInst op = kv_A(b.code, i);
+	for (i = 0; i < b.locals.Len(); ++i) { fmt.Println(".local  %-8s ; %lu", INSPECT_K(b.locals.At(i)), i); }
+	for (i = 0; i < b.upvals.Len(); ++i) { fmt.Println(".upval  %-8s ; %lu", INSPECT_K(b.upvals.At(i)), i); }
+	for (i = 0; i < b.k.Len(); ++i) { fmt.Println(".value  %-8s ; %lu", INSPECT_K(b.k.At(i)), i); }
+	for (i = 0; i < b.strings.Len; ++i) { fmt.Println(".string %-8s ; %lu", b.strings.At(i), i); }
+	for (i = 0; i < b.code.Len(); ++i) {
+		TrInst op = b.code.At(i);
 		fmt.printf("[%03lu] %-10s %3d %3d %3d", i, OPCODE_NAMES[GET_OPCODE(op)], GETARG_A(op), GETARG_B(op), GETARG_C(op));
 		switch (GET_OPCODE(op)) {
-			case TR_OP_LOADK:    fmt.Printf(" ; R[%d] = %s", GETARG_A(op), INSPECT_K(kv_A(b.k, GETARG_Bx(op))));
-			case TR_OP_STRING:   fmt.Printf(" ; R[%d] = \"%s\"", GETARG_A(op), kv_A(b.strings, GETARG_Bx(op)));
-			case TR_OP_LOOKUP:   fmt.Printf(" ; R[%d] = R[%d].method(:%s)", GETARG_A(op)+1, GETARG_A(op), INSPECT_K(kv_A(b.k, GETARG_Bx(op))));
+			case TR_OP_LOADK:    fmt.Printf(" ; R[%d] = %s", GETARG_A(op), INSPECT_K(b.k.At(GETARG_Bx(op))));
+			case TR_OP_STRING:   fmt.Printf(" ; R[%d] = \"%s\"", GETARG_A(op), b.strings.At(GETARG_Bx(op)));
+			case TR_OP_LOOKUP:   fmt.Printf(" ; R[%d] = R[%d].method(:%s)", GETARG_A(op)+1, GETARG_A(op), INSPECT_K(b.k.At(GETARG_Bx(op))));
 			case TR_OP_CALL:     fmt.Printf(" ; R[%d] = R[%d].R[%d](%d)", GETARG_A(op), GETARG_A(op), GETARG_A(op)+1, GETARG_B(op)>>1);
-			case TR_OP_SETUPVAL: fmt.Printf(" ; %s = R[%d]", INSPECT_K(kv_A(b.upvals, GETARG_B(op))), GETARG_A(op));
-			case TR_OP_GETUPVAL: fmt.Printf(" ; R[%d] = %s", GETARG_A(op), INSPECT_K(kv_A(b.upvals, GETARG_B(op))));
+			case TR_OP_SETUPVAL: fmt.Printf(" ; %s = R[%d]", INSPECT_K(b.upvals.At(GETARG_B(op))), GETARG_A(op));
+			case TR_OP_GETUPVAL: fmt.Printf(" ; R[%d] = %s", GETARG_A(op), INSPECT_K(b.upvals.At(GETARG_B(op))));
 			case TR_OP_JMP:      fmt.Printf(" ; %d", GETARG_sBx(op));
-			case TR_OP_DEF:      fmt.Printf(" ; %s => %p", INSPECT_K(kv_A(b.k, GETARG_Bx(op))), kv_A(b.blocks, GETARG_A(op)));
+			case TR_OP_DEF:      fmt.Printf(" ; %s => %p", INSPECT_K(b.k.At(GETARG_Bx(op))), b.blocks.At(GETARG_A(op)));
 		}
 		fmt.Println();
 	}
 	fmt.Println("; block end\n");
 
-	for (i = 0; i < kv_size(b.blocks); ++i) { kv_A(b.blocks, i).dump2(vm, level+1); }
+	for (i = 0; i < b.blocks.Len(); ++i) { b.blocks.At(i).dump2(vm, level+1); }
 	return TR_NIL;
 }
 
@@ -89,15 +89,17 @@ func (b *Block) dump(vm *TrVM) {
 
 func (block *Block) push_value(k OBJ) int {
 	size_t i;
-	for (i = 0; i < kv_size(block.k); ++i) { if (kv_A(block.k, i) == k) return i; }
-	kv_push(OBJ, block.k, k);
-	return kv_size(block.k) - 1;
+	for i = 0; i < block.k.Len(); ++i {
+		if block.k.At(i) == k { return i; }
+	}
+	block.k.Push(k);
+	return block.k.Len() - 1;
 }
 
 func (block *Block) push_string(str *char) int {
 	size_t i;
 	for (i = 0; i < blk.strings.Len; ++i) {
-		if (strcmp(kv_A(blk.strings, i), str) == 0) { return i; }
+		if strcmp(blk.strings.At(i) == str { return i; }
 	}
 	int len = strlen(str);
 	char *ptr = TR_ALLOC_N(char, len+1);
@@ -108,8 +110,8 @@ func (block *Block) push_string(str *char) int {
 
 func (block *Block) find_local(name OBJ) int {
 	size_t i;
-	for (i = 0; i < kv_size(blk.locals); ++i) {
-		if (kv_A(blk.locals, i) == name) { return i; }
+	for (i = 0; i < blk.locals.Len(); ++i) {
+		if blk.locals.At(i) == name { return i; }
 	}
 	return -1;
 }
@@ -117,13 +119,13 @@ func (block *Block) find_local(name OBJ) int {
 func (block *Block) push_local(name OBJ) int {
 	i = block.find_local(name);
 	if i != -1 { return i; }
-	kv_push(OBJ, block.locals, name);
-	return kv_size(block.locals) - 1;
+	block.locals.Push(name);
+	return block.locals.Len() - 1;
 }
 
 func (block *Block) find_upval(name OBJ) int {
-	for (i = 0; i < kv_size(block.upvals); ++i) {
-		if (kv_A(block.upvals, i) == name) { return i; }
+	for (i = 0; i < block.upvals.Len(); ++i) {
+		if block.upvals.At(i) == name { return i; }
 	}
 	return -1;
 }
@@ -141,8 +143,8 @@ func (block *Block) push_upval(name OBJ) int {
 
 	Block *b = block;
 	while (b.parent) {
-		if b.find_upval(name) == -1 { kv_push(OBJ, b.upvals, name); }
+		if b.find_upval(name) == -1 { b.upvals.Push(name); }
 		b = b.parent;
 	}
-	return kv_size(block.upvals)-1;
+	return block.upvals.Len()-1;
 }

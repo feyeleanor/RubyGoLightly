@@ -10,19 +10,19 @@ import (
 
 // symbol
 
-func TrSymbol_lookup(vm *struct TrVM, str const char *) OBJ {
-  khash_t(str) *kh = vm.symbols;
-  khiter_t k = kh_get(str, kh, str);
-  if (k != kh_end(kh)) return kh_value(kh, k);
+func TrSymbol_lookup(vm *struct TrVM, str string) OBJ {
+  symbols := vm.symbols;
+  khiter_t k = kh_get(str, symbols, str);
+  if (k != kh_end(symbols)) return kh_value(symbols, k);
   return TR_NIL;
 }
 
-func TrSymbol_add(vm *struct TrVM, str const char *, id OBJ) {
+func TrSymbol_add(vm *TrVM, str string, id OBJ) {
   int ret;
-  khash_t(str) *kh = vm.symbols;
-  khiter_t k = kh_put(str, kh, str, &ret);
-  if (!ret) kh_del(str, kh, k);
-  kh_value(kh, k) = id;
+  symbols := vm.symbols;
+  khiter_t k = kh_put(str, symbols, str, &ret);
+  if (!ret) kh_del(str, symbols, k);
+  kh_value(symbols, k) = id;
 }
 
 func TrSymbol_new(vm *struct TrVM, str const char *) OBJ {

@@ -13,7 +13,7 @@ type Closure struct {
 func newClosure(vm *struct TrVM, b *Block, self, class OBJ, parent *Closure) Closure {
 	closure = new(Closure);
 	closure.block = b;
-	closure.upvals = make([]TrUpval, kv_size(b.upvals));
+	closure.upvals = make([]TrUpval, b.upvals.Len());
 	closure.self = self;
 	closure.class = class;
 	closure.parent = parent;

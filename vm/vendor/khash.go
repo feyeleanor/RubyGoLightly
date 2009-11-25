@@ -294,14 +294,8 @@ static inline khint_t __ac_X31_hash_string(const char *s)
 
 /* More conenient interfaces */
 
-#define KHASH_SET_INIT_INT(name)										\
-	KHASH_INIT(name, uint32_t, char, 0, kh_int_hash_func, kh_int_hash_equal)
-
 #define KHASH_MAP_INIT_INT(name, khval_t)								\
 	KHASH_INIT(name, uint32_t, khval_t, 1, kh_int_hash_func, kh_int_hash_equal)
-
-#define KHASH_SET_INIT_INT64(name)										\
-	KHASH_INIT(name, uint64_t, char, 0, kh_int64_hash_func, kh_int64_hash_equal)
 
 #define KHASH_MAP_INIT_INT64(name, khval_t)								\
 	KHASH_INIT(name, uint64_t, khval_t, 1, kh_int64_hash_func, kh_int64_hash_equal)

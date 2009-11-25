@@ -31,7 +31,7 @@ static OBJ TrKernel_eval(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
 	Block *blk = Block_compile(vm, TR_STR_PTR(string), filename, lineno);
 	if !blk { return TR_UNDEF }
 	if vm.debug { blk.dump(vm) }
-	return TrVM_run(vm, blk, f.self, f.class, kv_size(blk.locals), f.stack);
+	return TrVM_run(vm, blk, f.self, f.class, blk.locals.Len(), f.stack);
 }
 
 static OBJ TrKernel_load(vm *struct TrVM, OBJ self, OBJ filename) {

@@ -7,12 +7,12 @@
 #define TR_MEMCPY_N(X,Y,T,N) memcpy((X), (Y), sizeof(T)*(N))
 
 /* ast building macros */
-#define NODE(T,A)            TrNode_new(compiler.vm, NODE_##T, (A), 0, 0, compiler.line)
-#define NODE2(T,A,B)         TrNode_new(compiler.vm, NODE_##T, (A), (B), 0, compiler.line)
-#define NODE3(T,A,B,C)       TrNode_new(compiler.vm, NODE_##T, (A), (B), (C), compiler.line)
+#define NODE(T,A)            newASTNode(compiler.vm, NODE_##T, (A), 0, 0, compiler.line)
+#define NODE2(T,A,B)         newASTNode(compiler.vm, NODE_##T, (A), (B), 0, compiler.line)
+#define NODE3(T,A,B,C)       newASTNode(compiler.vm, NODE_##T, (A), (B), (C), compiler.line)
 #define NODES(I)             newArray2(compiler.vm, 1, (I))
 #define NODES_N(N,...)       newArray2(compiler.vm, (N), ##__VA_ARGS__)
-#define PUSH_NODE(A,N)       TR_ARRAY_PUSH((A),(N))
+#define PUSH_NODE(A,N)       (A).kv.Push(N)
 #define SYMCAT(A,B)          tr_intern(strcat(((TrString*)(A)).ptr, ((TrString*)(B)).ptr))
 
 /* This provides the compiler about branch hints, so it
@@ -70,20 +70,3 @@ const (
 	NODE_NEG;
 	NODE_NOT;
 )
-type TrNodeType int
-
-type TrCompiler struct {
-	line		int;
-	filename	OBJ;
-	vm			*TrVM;
-  	block		*Block;
-  	reg			size_t;
-  	node		OBJ;
-}
-
-/* node */
-OBJ TrNode_new(vm *struct TrVM, TrNodeType type, OBJ a, OBJ b, OBJ c, size_t line);
-
-/* compiler */
-TrCompiler *TrCompiler_new(vm *struct TrVM, const char *fn);
-void TrCompiler_compile(TrCompiler *c);

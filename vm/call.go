@@ -44,11 +44,11 @@ func (self *Method) call(vm *TrVM, receiver OBJ, argc int, args *OBJ, splat int,
 
     /* splat last arg is needed */
     if splat {
-      OBJ splated = args[argc-1];
-      int splatedn = TR_ARRAY_SIZE(splated);
+      splated := args[argc-1];
+      splatedn := splated.kv.Len();
       OBJ *new_args = TR_ALLOC_N(OBJ, argc);
       TR_MEMCPY_N(new_args, args, OBJ, argc-1);
-      TR_MEMCPY_N(new_args + argc-1, &TR_ARRAY_AT(splated, 0), OBJ, splatedn);
+      TR_MEMCPY_N(new_args + argc-1, &splated.kv.At(0), OBJ, splatedn);
       argc += splatedn-1;
       args = new_args;
     }

@@ -37,16 +37,16 @@
 /* raw hash macros */
 #define TR_KH_GET(KH,K) ({ \
   OBJ key = (K); \
-  khash_t(OBJ) *kh = (KH); \
-  khiter_t k = kh_get(OBJ, kh, key); \
-  k == kh_end(kh) ? TR_NIL : kh_value(kh, k); \
+  hash := (KH); \
+  khiter_t k = kh_get(OBJ, hash, key); \
+  k == kh_end(hash) ? TR_NIL : kh_value(hash, k); \
 })
 #define TR_KH_SET(KH,K,V) ({ \
   OBJ key = (K); \
-  khash_t(OBJ) *kh = (KH); \
+  hash := (KH); \
   int ret; \
-  khiter_t k = kh_put(OBJ, kh, key, &ret); \
-  kh_value(kh, k) = (V); \
+  khiter_t k = kh_put(OBJ, hash, key, &ret); \
+  kh_value(hash, k) = (V); \
 })
 #define TR_KH_EACH(H,I,V,B) ({ \
     khiter_t __k##V; \
@@ -156,14 +156,14 @@ typedef OBJ (TrFunc)(vm *struct TrVM, OBJ receiver, ...);
 type TrBinding struct {
 	type 			TR_T;
 	class			OBJ;
-	ivars			*khash_t(OBJ);
+	ivars			map[string] OBJ;
   	frame			*Frame;
 }
 
 type TrVM struct {
-	symbols			*khash_t(str);
-	globals			*khash_t(OBJ);
-	consts			*khash_t(OBJ);           /* TODO this goes in modules */
+	symbols			*map[string] string;
+	globals			*map[string] OBJ;
+	consts			*map[string] OBJ;           /* TODO this goes in modules */
 	classes			[TR_T_MAX]OBJ;          /* core classes */
 	top_frame		*Frame;             /* top level frame */
 	frame			*Frame;                 /* current frame */
@@ -198,42 +198,41 @@ type TrVM struct {
 }
 
 type TrObject struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
+	type 			TR_T;
+	class			OBJ;
+	ivars			*map[string] OBJ;
 }
 
 type TrString struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
-  char *ptr;
-  size_t len;
-  int interned:1;
+	type 			TR_T;
+	class			OBJ;
+	ivars			*map[string] OBJ;
+	ptr				*char;
+	len				size_t;
+	interned		bool;
 }
 type TrSymbol TrString
 
 type TrRange struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
-  OBJ first;
-  OBJ last;
-  int exclusive;
+	type			TR_T;
+	class			OBJ;
+	ivars			*map[string] OBJ;
+	first, last		OBJ;
+	exclusive		int;
 }
 
 type TrHash struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
-  khash_t(OBJ) *kh;
+	type			TR_T;
+	class			OBJ;
+	ivars			*map[string] OBJ;
+	kh				*map[string] OBJ;
 }
 
 type TrRegexp struct {
-  TR_T type;
-  OBJ class;
-  khash_t(OBJ) *ivars;
-  pcre *re;
+	type			TR_T;
+	class			OBJ;
+	ivars			*map[string] OBJ;
+  	re				*pcre;
 }
 
 /* vm */

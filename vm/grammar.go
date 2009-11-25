@@ -10,10 +10,10 @@
 #define YYREALLOC TR_REALLOC
 #define yyvm      compiler.vm
 
-static char *charbuf;
-static char *sbuf;
-static size_t nbuf;
-static TrCompiler *compiler;
+char *charbuf;
+char *sbuf;
+size_t nbuf;
+Compiler *compiler;
 
 #define YY_INPUT(buf, result, max_size) { \
   int yyc; \
@@ -313,22 +313,20 @@ OBJ yyerror() {
 /* Compiles code to a Block.
    Returns NULL on error, error is stored in TR_EXCEPTION. */
 func Block_compile(vm *TrVM, code char *, fn char *, lineno size_t) Block * {
-  assert(!compiler && "parser not reentrant");
-  charbuf = code;
-  compiler = TrCompiler_new(vm, fn);
-  compiler.line += lineno;
-  compiler.filename = TrString_new2(vm, fn);
-  Block *b = NULL;
+	assert(!compiler && "parser not reentrant");
+	charbuf = code;
+	compiler = newCompiler(vm, fn);
+	compiler.line += lineno;
+	compiler.filename = TrString_new2(vm, fn);
+	Block *b = NULL;
 
-  if (!yyparse()) {
-    yyerror();
-    goto error;
-  }
-
-  TrCompiler_compile(compiler);
-  b = compiler.block;
-error:
-  charbuf = 0;
-  compiler = 0;
-  return b;
+	if yyparse() {
+		compiler.compile
+		b = compiler.block;		
+	} else {}
+		yyerror();
+	}
+	charbuf = 0;
+	compiler = 0;
+	return b;
 }

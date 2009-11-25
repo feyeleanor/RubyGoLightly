@@ -6,24 +6,27 @@ import (
 type Method struct {
 	type			TR_T;
 	class			OBJ;
-	ivars			*khash_t(OBJ);
+	ivars			*map[string] OBJ;
   	func			*TrFunc;
 	data			OBJ;
 	name			OBJ;
 	arity			int;
 }
 
-type Class struct {
+type Module struct {
 	type			TR_T;
 	class			OBJ;
-	ivars			*khash_t(OBJ);
+	ivars			*map[string] OBJ;
 	name			OBJ;
 	super			OBJ;
-	methods			*khash_t(OBJ);
+	methods			map[string] OBJ;
 	meta:1			int;
 }
 
-type Module Class;
+type Class struct {
+	module			Module;
+}
+
 
 /* included module proxy */
 
