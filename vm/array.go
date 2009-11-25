@@ -4,16 +4,6 @@ import (
 	"container/vector";
 )
 
-// rephrase arrays in terms of the stdlib vector which is dynamically expandable
-
-// array macros
-#define TR_ARRAY_EACH(T,I,V,B) ({			\
-	index := 0; for V := range T.Iter() {	\
-		B;									\
-		index++;							\
-  	}										\
-})
-
 type Array struct {
 	type		TR_T;
 	class		OBJ;
