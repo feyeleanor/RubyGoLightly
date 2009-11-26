@@ -31,36 +31,36 @@
  SystemExit
  fatal */
 
-OBJ TrException_new(vm *struct TrVM, OBJ class, OBJ message) {
+OBJ TrException_new(vm *RubyVM, OBJ class, OBJ message) {
   OBJ e = TrObject_alloc(vm, class);
   tr_setivar(e, "@message", message);
   tr_setivar(e, "@backtrace", TR_NIL);
   return OBJ(e);
 }
 
-static OBJ TrException_cexception(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
+static OBJ TrException_cexception(vm *RubyVM, OBJ self, int argc, OBJ argv[]) {
   if (argc == 0) return TrException_new(vm, self, TR_CCLASS(self).name);
   return TrException_new(vm, self, argv[0]);
 }
 
-static OBJ TrException_iexception(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
+static OBJ TrException_iexception(vm *RubyVM, OBJ self, int argc, OBJ argv[]) {
   if (argc == 0) return self;
   return TrException_new(vm, TR_CLASS(self), argv[0]);
 }
 
-static OBJ TrException_message(vm *struct TrVM, OBJ self) {
+static OBJ TrException_message(vm *RubyVM, OBJ self) {
   return tr_getivar(self, "@message");
 }
 
-OBJ TrException_backtrace(vm *struct TrVM, OBJ self) {
+OBJ TrException_backtrace(vm *RubyVM, OBJ self) {
   return tr_getivar(self, "@backtrace");
 }
 
-OBJ TrException_set_backtrace(vm *struct TrVM, OBJ self, OBJ backtrace) {
+OBJ TrException_set_backtrace(vm *RubyVM, OBJ self, OBJ backtrace) {
   return tr_setivar(self, "@backtrace", backtrace);
 }
 
-OBJ TrException_default_handler(vm *struct TrVM, OBJ exception) {
+OBJ TrException_default_handler(vm *RubyVM, OBJ exception) {
   Class *c = TR_CCLASS(TR_CLASS(exception));
   OBJ msg = tr_getivar(exception, "@message");
   OBJ backtrace = tr_getivar(exception, "@backtrace");
@@ -69,12 +69,11 @@ OBJ TrException_default_handler(vm *struct TrVM, OBJ exception) {
   if backtrace {
 	for item := range backtrace.Iter() { println(TR_STR_PTR(item)); }
   }
-  
-  TrVM_destroy(vm);
+  vm.destroy();
   exit(1);
 }
 
-void TrError_init(vm *struct TrVM) {
+void TrError_init(vm *RubyVM) {
   OBJ c = vm.cException = tr_defclass("Exception", 0);
   tr_metadef(c, "exception", TrException_cexception, -1);
   tr_def(c, "exception", TrException_iexception, -1);

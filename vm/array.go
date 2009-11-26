@@ -11,14 +11,14 @@ type Array struct {
 	kv			*Vector;
 }
 
-func newArray(vm struct TrVM *) OBJ {
+func newArray(vm *RubyVM) OBJ {
 	Array *a = TR_INIT_CORE_OBJECT(Array);
 	a.kv = Vector.New(0);
 	return OBJ(a);
 }
 
 // Uses variadic ... parameter which replaces the mechanism used by stdarg.h
-func newArray2(vm struct TrVM *, argc int, ...) OBJ {
+func newArray2(vm *RubyVM, argc int, ...) OBJ {
   OBJ a = newArray(vm);
   va_list argp;
   int i;
@@ -28,30 +28,30 @@ func newArray2(vm struct TrVM *, argc int, ...) OBJ {
   return a;
 }
 
-func newArray3(vm struct TrVM *, argc int, items []OBJ) OBJ {
+func newArray3(vm *RubyVM, argc int, items []OBJ) OBJ {
   a := newArray(vm);
   for i := 0; i < argc; ++i { a.kv.Push(items[i]) };
   return a;
 }
 
-func (self *Array) push(vm struct TrVM *, x OBJ) OBJ {
+func (self *Array) push(vm *RubyVM, x OBJ) OBJ {
 	self.kv.Push(x);
 	return x;
 }
 
-func (self *Array) at2index(vm struct TrVM *, at OBJ) int {
+func (self *Array) at2index(vm *RubyVM, at OBJ) int {
   int i = TR_FIX2INT(at);
   if (i < 0) i = self.kv.Len() + i;
   return i;
 }
 
-func (self *Array) at(vm struct TrVM *, at OBJ) OBJ {
+func (self *Array) at(vm *RubyVM, at OBJ) OBJ {
   i := self.at2index(vm, at);
   if i < 0 || i >= self.kv.Len() { return TR_NIL; }
   return self.kv.At(i);
 }
 
-func (self *Array) set(vm struct TrVM *, at, x OBJ) OBJ {
+func (self *Array) set(vm *RubyVM, at, x OBJ) OBJ {
 	i := self.at2index(vm, at);
 	switch {
 		case i < 0:				tr_raise(IndexError, "index %d out of array", i);
@@ -63,11 +63,11 @@ func (self *Array) set(vm struct TrVM *, at, x OBJ) OBJ {
 	return x;
 }
 
-func (self *Array) length(vm struct TrVM *) OBJ {
+func (self *Array) length(vm *RubyVM) OBJ {
   return TR_INT2FIX(self.kv.Len());
 }
 
-void TrArray_init(vm struct TrVM *) {
+void TrArray_init(vm *RubyVM) {
   OBJ c = TR_INIT_CORE_CLASS(Array, Object);
   tr_def(c, "length", TrArray_length, 0);
   tr_def(c, "size", TrArray_length, 0);

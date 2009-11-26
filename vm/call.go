@@ -33,46 +33,45 @@ type Frame struct {
   vm.frame = vm.frame.previous; \
 })
 
-func (self *Method) call(vm *TrVM, receiver OBJ, argc int, args *OBJ, splat int, cl *Closure) OBJ {
-  OBJ ret = TR_NIL;
-  Frame *f = nil;
+func (self *Method) call(vm *RubyVM, receiver OBJ, argc int, args *OBJ, splat int, cl *Closure) OBJ {
+	ret := TR_NIL;
+	Frame *f = nil;
 
-  TR_WITH_FRAME(receiver, TR_CLASS(receiver), cl, {
-    f = vm.frame;
-    Method *m = f.method = (Method *) self;
-    TrFunc *func = f.method.func;
+	TR_WITH_FRAME(receiver, TR_CLASS(receiver), cl, {
+		f := vm.frame;
+		m := f.method = self;
+		func = f.method.func;
 
-    /* splat last arg is needed */
-    if splat {
-      splated := args[argc-1];
-      splatedn := splated.kv.Len();
-      OBJ *new_args = TR_ALLOC_N(OBJ, argc);
-      TR_MEMCPY_N(new_args, args, OBJ, argc-1);
-      TR_MEMCPY_N(new_args + argc-1, &splated.kv.At(0), OBJ, splatedn);
-      argc += splatedn-1;
-      args = new_args;
-    }
-  
-    if (m.arity == -1) {
-      ret = func(vm, receiver, argc, args);
-    } else {
-      if (m.arity != argc) tr_raise(ArgumentError, "Expected %d arguments, got %d.", f.method.arity, argc);
-      switch (argc) {
-        case 0:  ret = func(vm, receiver); break;
-        case 1:  ret = func(vm, receiver, args[0]); break;
-        case 2:  ret = func(vm, receiver, args[0], args[1]); break;
-        case 3:  ret = func(vm, receiver, args[0], args[1], args[2]); break;
-        case 4:  ret = func(vm, receiver, args[0], args[1], args[2], args[3]); break;
-        case 5:  ret = func(vm, receiver, args[0], args[1], args[2], args[3], args[4]); break;
-        case 6:  ret = func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5]); break;
-        case 7:  ret = func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6]); break;
-        case 8:  ret = func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]); break;
-        case 9:  ret = func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]); break;
-        case 10: ret = func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]); break;
-        default: tr_raise(ArgumentError, "Too much arguments: %d, max is %d for now.", argc, 10);
-      }
-    }
-  });
-  
-  return ret;
+		// splat last arg is needed
+		if splat {
+			splated := args[argc - 1];
+			splatedn := splated.kv.Len();
+			new_args := make([]OBJ, argc)
+			memcpy(new_args, args, sizeof(OBJ) * (argc - 1));
+			memcpy(new_args + argc - 1, &splated.kv.At(0), sizeof(OBJ) * splatedn);
+			argc += splatedn-1;
+			args = new_args;
+		}
+
+		if (m.arity == -1) {
+			ret := func(vm, receiver, argc, args);
+		} else {
+			if m.arity != argc { tr_raise(ArgumentError, "Expected %d arguments, got %d.", f.method.arity, argc); }
+			switch argc {
+				case 0:  ret := func(vm, receiver);
+				case 1:  ret := func(vm, receiver, args[0]);
+				case 2:  ret := func(vm, receiver, args[0], args[1]);
+				case 3:  ret := func(vm, receiver, args[0], args[1], args[2]);
+				case 4:  ret := func(vm, receiver, args[0], args[1], args[2], args[3]);
+				case 5:  ret := func(vm, receiver, args[0], args[1], args[2], args[3], args[4]);
+				case 6:  ret := func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5]);
+				case 7:  ret := func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+				case 8:  ret := func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
+				case 9:  ret := func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
+				case 10: ret := func(vm, receiver, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9]);
+				default: tr_raise(ArgumentError, "Too much arguments: %d, max is %d for now.", argc, 10);
+			}
+		}
+	});
+	return ret;
 }

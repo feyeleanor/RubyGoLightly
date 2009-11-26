@@ -4,23 +4,20 @@
 #define MATH(A,OP,B)  TR_INT2FIX(TR_FIX2INT(A) OP TR_FIX2INT(B))
 #define CMP(A,OP,B)   TR_BOOL(TR_FIX2INT(A) OP TR_FIX2INT(B))
 
-OBJ TrFixnum_add(vm *struct TrVM, OBJ self, OBJ other) { return MATH(self, +, other); }
-OBJ TrFixnum_sub(vm *struct TrVM, OBJ self, OBJ other) { return MATH(self, -, other); }
-OBJ TrFixnum_mul(vm *struct TrVM, OBJ self, OBJ other) { return MATH(self, *, other); }
-OBJ TrFixnum_div(vm *struct TrVM, OBJ self, OBJ other) { return MATH(self, /, other); }
+func TrFixnum_add(vm *RunyVM, self, other OBJ) OBJ { return MATH(self, +, other); }
+func TrFixnum_sub(vm *RubyVM, self, other OBJ) OBJ { return MATH(self, -, other); }
+func TrFixnum_mul(vm *RubyVM, self, other OBJ) OBJ { return MATH(self, *, other); }
+func TrFixnum_div(vm *RubyVM, self, other OBJ) OBJ { return MATH(self, /, other); }
 
-OBJ TrFixnum_eq(vm *struct TrVM, OBJ self, OBJ other) { return CMP(self, ==, other); }
-OBJ TrFixnum_ne(vm *struct TrVM, OBJ self, OBJ other) { return CMP(self, !=, other); }
-OBJ TrFixnum_lt(vm *struct TrVM, OBJ self, OBJ other) { return CMP(self, <, other); }
-OBJ TrFixnum_gt(vm *struct TrVM, OBJ self, OBJ other) { return CMP(self, >, other); }
-OBJ TrFixnum_le(vm *struct TrVM, OBJ self, OBJ other) { return CMP(self, <=, other); }
-OBJ TrFixnum_ge(vm *struct TrVM, OBJ self, OBJ other) { return CMP(self, >=, other); }
+func TrFixnum_eq(vm *RubyVM, self, other OBJ) OBJ { return CMP(self, ==, other); }
+func TrFixnum_ne(vm *RubyVM, self, other OBJ) OBJ { return CMP(self, !=, other); }
+func TrFixnum_lt(vm *RubyVM, self, other OBJ) OBJ { return CMP(self, <, other); }
+func TrFixnum_gt(vm *RubyVM, self, other OBJ) OBJ { return CMP(self, >, other); }
+func TrFixnum_le(vm *RubyVM, self, other OBJ) OBJ { return CMP(self, <=, other); }
+func TrFixnum_ge(vm *RubyVM, self, other OBJ) OBJ { return CMP(self, >=, other); }
+func TrFixnum_to_s(vm *RubyVM, OBJ self) OBJ { return tr_sprintf(vm, "%d", TR_FIX2INT(self)); }
 
-OBJ TrFixnum_to_s(vm *struct TrVM, OBJ self) {
-  return tr_sprintf(vm, "%d", TR_FIX2INT(self));
-}
-
-void TrFixnum_init(vm *struct TrVM) {
+void TrFixnum_init(vm *RubyVM) {
   OBJ c = TR_INIT_CORE_CLASS(Fixnum, Object);
   tr_def(c, "+", TrFixnum_add, 1);
   tr_def(c, "-", TrFixnum_sub, 1);

@@ -1,13 +1,13 @@
 #include "tr.h"
 #include "internal.h"
 
-OBJ TrHash_new(vm *struct TrVM) {
+OBJ TrHash_new(vm *RubyVM) {
   TrHash *h = TR_INIT_CORE_OBJECT(Hash);
   h.kh = kh_init(OBJ);
   return OBJ(h);
 }
 
-OBJ TrHash_new2(vm *struct TrVM, size_t n, OBJ items[]) {
+OBJ TrHash_new2(vm *RubyVM, size_t n, OBJ items[]) {
   TrHash *h = (TrHash *)TrHash_new(vm);
   size_t i;
   int ret;
@@ -18,20 +18,20 @@ OBJ TrHash_new2(vm *struct TrVM, size_t n, OBJ items[]) {
   return OBJ(h);
 }
 
-static OBJ TrHash_size(vm *struct TrVM, OBJ self) {
+static OBJ TrHash_size(vm *RubyVM, OBJ self) {
   TrHash *h = TR_CHASH(self);
   return TR_INT2FIX(kh_size(h.kh));
 }
 
 /* TODO use Object#hash as the key */
-static OBJ TrHash_get(vm *struct TrVM, OBJ self, OBJ key) {
+static OBJ TrHash_get(vm *RubyVM, OBJ self, OBJ key) {
   TrHash *h = TR_CHASH(self);
   khiter_t k = kh_get(OBJ, h.kh, key);
   if (k != kh_end(h.kh)) return kh_value(h.kh, k);
   return TR_NIL;
 }
 
-static OBJ TrHash_set(vm *struct TrVM, OBJ self, OBJ key, OBJ value) {
+static OBJ TrHash_set(vm *RubyVM, OBJ self, OBJ key, OBJ value) {
   TrHash *h = TR_CHASH(self);
   int ret;
   khiter_t k = kh_put(OBJ, h.kh, key, &ret);
@@ -40,7 +40,7 @@ static OBJ TrHash_set(vm *struct TrVM, OBJ self, OBJ key, OBJ value) {
   return value;
 }
 
-static OBJ TrHash_delete(vm *struct TrVM, OBJ self, OBJ key) {
+static OBJ TrHash_delete(vm *RubyVM, OBJ self, OBJ key) {
   TrHash *h = TR_CHASH(self);
   khiter_t k = kh_get(OBJ, h.kh, key);
   if (k != kh_end(h.kh)) {
@@ -51,7 +51,7 @@ static OBJ TrHash_delete(vm *struct TrVM, OBJ self, OBJ key) {
   return TR_NIL;
 }
 
-void TrHash_init(vm *struct TrVM) {
+void TrHash_init(vm *RubyVM) {
   OBJ c = TR_INIT_CORE_CLASS(Hash, Object);
   tr_def(c, "length", TrHash_size, 0);
   tr_def(c, "size", TrHash_size, 0);

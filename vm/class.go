@@ -30,7 +30,7 @@ type Class struct {
 
 /* included module proxy */
 
-func newIModule(vm *struct TrVM, OBJ module, OBJ super) OBJ {
+func newIModule(vm *RubyVM, OBJ module, OBJ super) OBJ {
   Module *m = TR_CCLASS(module);
   Module *im = TR_INIT_CORE_OBJECT(Module);
   im.name = m.name;
@@ -41,7 +41,7 @@ func newIModule(vm *struct TrVM, OBJ module, OBJ super) OBJ {
 
 /* module */
 
-func newModule(vm *struct TrVM, OBJ name) OBJ {
+func newModule(vm *RubyVM, OBJ name) OBJ {
   Module *m = TR_INIT_CORE_OBJECT(Module);
   m.name = name;
   m.methods = kh_init(OBJ);
@@ -59,7 +59,7 @@ func (self *Class) cclass() *Class {
 	self
 }
 
-func (self *Module) instance_method(vm *TrVM, name OBJ) OBJ {
+func (self *Module) instance_method(vm *RubyVM, name OBJ) OBJ {
   Class *class = TR_CCLASS(self);
   while (class) {
     OBJ method = TR_KH_GET(class.methods, name);
@@ -69,28 +69,28 @@ func (self *Module) instance_method(vm *TrVM, name OBJ) OBJ {
   return TR_NIL;
 }
 
-func (self *Module) add_method(vm *TrVM, name, method OBJ) OBJ {
+func (self *Module) add_method(vm *RubyVM, name, method OBJ) OBJ {
   Class *m = TR_CCLASS(self);
   TR_KH_SET(m.methods, name, method);
   ((Method *) method).name = name;
   return method;
 }
 
-func (self *Module) alias_method(vm *TrVM, new_name, old_name OBJ) OBJ {
+func (self *Module) alias_method(vm *RubyVM, new_name, old_name OBJ) OBJ {
   return self.instance_method(vm, old_name).add_method(vm, self, new_name);
 }
 
-func (self *Module) include(vm *TrVM, module OBJ) OBJ {
+func (self *Module) include(vm *RubyVM, module OBJ) OBJ {
   Class *class = TR_CCLASS(self);
   class.super = newIModule(vm, module, class.super);
   return module;
 }
 
-func (self *Module) name(vm *TrVM) OBJ {
+func (self *Module) name(vm *RubyVM) OBJ {
   return TR_CCLASS(self).name;
 }
 
-void TrModule_init(vm *TrVM) {
+void TrModule_init(vm *RubyVM) {
   OBJ c = TR_INIT_CORE_CLASS(Module, Object);
   tr_def(c, "name", TrModule_name, 0);
   tr_def(c, "include", TrModule_include, 1);
@@ -101,7 +101,7 @@ void TrModule_init(vm *TrVM) {
 
 /* class */
 
-func newClass(vm *TrVM, OBJ name, OBJ super) OBJ {
+func newClass(vm *RubyVM, OBJ name, OBJ super) OBJ {
   Class *c = TR_INIT_CORE_OBJECT(Class);
   c.name = name;
   c.methods = kh_init(OBJ);
@@ -113,20 +113,20 @@ func newClass(vm *TrVM, OBJ name, OBJ super) OBJ {
   return OBJ(c);
 }
 
-func (self *Class) allocate(vm *TrVM) OBJ {
+func (self *Class) allocate(vm *RubyVM) OBJ {
   TrObject *o = TR_INIT_CORE_OBJECT(Object);
   o.class = self;
   return OBJ(o);
 }
 
-func (self *Class) superclass(vm *TrVM) OBJ {
+func (self *Class) superclass(vm *RubyVM) OBJ {
   OBJ super = TR_CCLASS(self).super;
   while (super && !super.(Class))
     super = TR_CCLASS(super).super;
   return super;
 }
 
-void TrClass_init(vm *struct TrVM) {
+void TrClass_init(vm *RubyVM) {
   OBJ c = TR_INIT_CORE_CLASS(Class, Module);
   tr_def(c, "superclass", TrClass_superclass, 0);
   tr_def(c, "allocate", TrClass_allocate, 0);
@@ -134,7 +134,7 @@ void TrClass_init(vm *struct TrVM) {
 
 /* metaclass */
 
-func newMetaClass(vm *TrVM, OBJ super) OBJ {
+func newMetaClass(vm *RubyVM, OBJ super) OBJ {
   *c = TR_CCLASS(super);
   OBJ name = tr_sprintf(vm, "Class:%s", TR_STR_PTR(c.name));
   name = tr_intern(TR_STR_PTR(name)); /* symbolize */
@@ -146,7 +146,7 @@ func newMetaClass(vm *TrVM, OBJ super) OBJ {
 
 /* method */
 
-func newMethod(vm *TrVM, function *TrFunc, data OBJ, arity int) OBJ {
+func newMethod(vm *RubyVM, function *TrFunc, data OBJ, arity int) OBJ {
   Method *m = TR_INIT_CORE_OBJECT(Method);
   m.func = function;
   m.data = data;
@@ -154,10 +154,10 @@ func newMethod(vm *TrVM, function *TrFunc, data OBJ, arity int) OBJ {
   return OBJ(m);
 }
 
-OBJ (self *Method) name(vm *TrVM) { return ((Method *) self).name; }
-OBJ (self *Method) arity(vm *TrVM) { return TR_INT2FIX(((Method *) self).arity); }
+OBJ (self *Method) name(vm *RubyVM) { return ((Method *) self).name; }
+OBJ (self *Method) arity(vm *RubyVM) { return TR_INT2FIX(((Method *) self).arity); }
 
-func (self *Method) dump(vm *TrVM) OBJ {
+func (self *Method) dump(vm *RubyVM) OBJ {
 	Method *m = (Method *) self;
 	if (m.name) printf("<Method '%s':%p>\n", TR_STR_PTR(m.name), m);
 	if (m.data) {
@@ -168,7 +168,7 @@ func (self *Method) dump(vm *TrVM) OBJ {
 	return TR_NIL;
 }
 
-void TrMethod_init(vm *TrVM) {
+void TrMethod_init(vm *RubyVM) {
   OBJ c = TR_INIT_CORE_CLASS(Method, Object);
   tr_def(c, "name", TrMethod_name, 0);
   tr_def(c, "arity", TrMethod_arity, 0);

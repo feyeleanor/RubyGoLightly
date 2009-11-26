@@ -44,7 +44,7 @@ func newBlock(compiler *Compiler, parent *Block) *Block {
 
 #define INSPECT_K(K)  (K.(Symbol) ? TR_STR_PTR(K) : (sprintf(buf, "%d", TR_FIX2INT(K)), buf))
 
-func (b *Block) dump2(vm *TrVM, level int) OBJ {
+func (b *Block) dump2(vm *RubyVM, level int) OBJ {
 	char buf[10];
   
 	size_t i;
@@ -83,7 +83,7 @@ func (b *Block) dump2(vm *TrVM, level int) OBJ {
 	return TR_NIL;
 }
 
-func (b *Block) dump(vm *TrVM) {
+func (b *Block) dump(vm *RubyVM) {
 	b.dump2(vm, 0);
 }
 
@@ -96,14 +96,14 @@ func (block *Block) push_value(k OBJ) int {
 	return block.k.Len() - 1;
 }
 
-func (block *Block) push_string(str *char) int {
+func (block *Block) push_string(str *string) int {
 	size_t i;
 	for (i = 0; i < blk.strings.Len; ++i) {
 		if strcmp(blk.strings.At(i) == str { return i; }
 	}
-	int len = strlen(str);
-	char *ptr = TR_ALLOC_N(char, len+1);
-	TR_MEMCPY_N(ptr, str, char, len+1);
+	len := strlen(str);
+	ptr := make([]byte, len + 1);
+	memcpy(ptr, str, sizeof(char) * (len + 1));
 	blk.strings.Push ptr
 	return blk.strings.Len - 1;
 }

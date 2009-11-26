@@ -1,12 +1,4 @@
-#define TR_ALLOC(T)          (T *)TR_MALLOC(sizeof(T))
-#define TR_ALLOC_N(T,N)      (T *)TR_MALLOC(sizeof(T)*(N))
-
-#define TR_MEMZERO(X,T)      memset((X), 0, sizeof(T))
-#define TR_MEMZERO_N(X,T,N)  memset((X), 0, sizeof(T)*(N))
-#define TR_MEMCPY(X,Y,T)     memcpy((X), (Y), sizeof(T))
-#define TR_MEMCPY_N(X,Y,T,N) memcpy((X), (Y), sizeof(T)*(N))
-
-/* ast building macros */
+// ast building macros
 #define NODE(T,A)            newASTNode(compiler.vm, NODE_##T, (A), 0, 0, compiler.line)
 #define NODE2(T,A,B)         newASTNode(compiler.vm, NODE_##T, (A), (B), 0, compiler.line)
 #define NODE3(T,A,B,C)       newASTNode(compiler.vm, NODE_##T, (A), (B), (C), compiler.line)

@@ -36,26 +36,26 @@
 
 /* raw hash macros */
 #define TR_KH_GET(KH,K) ({ \
-  OBJ key = (K); \
-  hash := (KH); \
-  khiter_t k = kh_get(OBJ, hash, key); \
-  k == kh_end(hash) ? TR_NIL : kh_value(hash, k); \
+	key := (K); \
+	hash := (KH); \
+	k := kh_get(OBJ, hash, key); \
+	k == kh_end(hash) ? TR_NIL : kh_value(hash, k); \
 })
 #define TR_KH_SET(KH,K,V) ({ \
-  OBJ key = (K); \
-  hash := (KH); \
-  int ret; \
-  khiter_t k = kh_put(OBJ, hash, key, &ret); \
-  kh_value(hash, k) = (V); \
+	key := (K); \
+	hash := (KH); \
+	int ret; \
+	k := kh_put(OBJ, hash, key, &ret); \
+	kh_value(hash, k) = (V); \
 })
 #define TR_KH_EACH(H,I,V,B) ({ \
-    khiter_t __k##V; \
-    for (__k##V = kh_begin(H); __k##V != kh_end(H); ++__k##V) \
-      if (kh_exist((H), __k##V)) { \
-        OBJ V = kh_value((H), __k##V); \
-        B \
-      } \
-  })
+	khiter_t __k##V; \
+	for (__k##V = kh_begin(H); __k##V != kh_end(H); ++__k##V) \
+		if (kh_exist((H), __k##V)) { \
+			OBJ V = kh_value((H), __k##V); \
+			B \
+		} \
+	})
 
 /* throw macros */
 #define TR_THROW(R,V)        ({ \
@@ -84,15 +84,15 @@
 
 /* core classes macros */
 #define TR_INIT_CORE_OBJECT(T) ({ \
-  Tr##T *o = TR_ALLOC(Tr##T); \
-  o.type  = TR_T_##T; \
-  o.class = vm.classes[TR_T_##T]; \
-  o.ivars = kh_init(OBJ); \
-  o; \
+	o := new(Tr##T); \
+	o.type  = TR_T_##T; \
+	o.class = vm.classes[TR_T_##T]; \
+	o.ivars = kh_init(OBJ); \
+	o; \
 })
 #define TR_CORE_CLASS(T)     vm.classes[TR_T_##T]
 #define TR_INIT_CORE_CLASS(T,S) \
-  TR_CORE_CLASS(T) = TrObject_const_set(vm, vm.self, tr_intern(#T), newClass(vm, tr_intern(#T), TR_CORE_CLASS(S)))
+	TR_CORE_CLASS(T) = TrObject_const_set(vm, vm.self, tr_intern(#T), newClass(vm, tr_intern(#T), TR_CORE_CLASS(S)))
 
 /* API macros */
 #define tr_getivar(O,N)      TR_KH_GET(TR_COBJECT(O).ivars, tr_intern(N))
@@ -108,15 +108,13 @@
 #define tr_defmodule(N)      TrObject_const_set(vm, vm.self, tr_intern(N), newModule(vm, tr_intern(N)))
 
 #define tr_send(R,MSG,...)   ({ \
-  OBJ __argv[] = { (MSG), ##__VA_ARGS__ }; \
-  TrObject_send(vm, R, sizeof(__argv)/sizeof(OBJ), __argv); \
+	__argv[] := { (MSG), ##__VA_ARGS__ }; \
+	TrObject_send(vm, R, sizeof(__argv)/sizeof(OBJ), __argv); \
 })
 #define tr_send2(R,STR,...)  tr_send((R), tr_intern(STR), ##__VA_ARGS__)
 
 typedef unsigned long OBJ;
 typedef unsigned char u8;
-
-type TrInst uint;
 
 KHASH_MAP_INIT_STR(str, OBJ)
 KHASH_MAP_INIT_INT(OBJ, OBJ)
@@ -131,24 +129,22 @@ typedef enum {
 } TR_T;
 
 typedef enum {
-  TR_THROW_EXCEPTION,
-  TR_THROW_RETURN,
-  TR_THROW_BREAK
+	TR_THROW_EXCEPTION,
+	TR_THROW_RETURN,
+	TR_THROW_BREAK
 } TR_THROW_REASON;
 
-struct TrVM;
-
 type TrCallSite struct {
-  OBJ class;
-  OBJ method;
-  OBJ message;
-  int method_missing:1;
-  size_t miss;
+	class			OBJ;
+	method			OBJ;
+	message			OBJ;
+	method_missing	bool;
+	miss			size_t;
 }
 
 type TrUpval struct {
-  OBJ *value;
-  OBJ closed; /* value when closed */
+	value			*OBJ;
+	closed			OBJ;		// value when closed
 }
 
 typedef OBJ (TrFunc)(vm *struct TrVM, OBJ receiver, ...);
@@ -158,43 +154,6 @@ type TrBinding struct {
 	class			OBJ;
 	ivars			map[string] OBJ;
   	frame			*Frame;
-}
-
-type TrVM struct {
-	symbols			*map[string] string;
-	globals			*map[string] OBJ;
-	consts			*map[string] OBJ;           /* TODO this goes in modules */
-	classes			[TR_T_MAX]OBJ;          /* core classes */
-	top_frame		*Frame;             /* top level frame */
-	frame			*Frame;                 /* current frame */
-	cf				int;                         /* current frame number */
-	self			OBJ;                       /* root object */
-	debug			int;
-	throw_reason	int;
-	throw_value	OBJ;
-  
-	// exceptions
-	cException			OBJ;
-	cScriptError		OBJ;
-	cSyntaxError		OBJ;
-	cStandardError		OBJ;
-	cArgumentError		OBJ;
-	cRuntimeError		OBJ;
-	cRegexpError		OBJ;
-	cTypeError			OBJ;
-	cSystemCallError	OBJ;
-	cIndexError			OBJ;
-	cLocalJumpError		OBJ;
-	cSystemStackError	OBJ;
-	cNameError			OBJ;
-	cNoMethodError		OBJ;
-  
-	// cached objects
-	sADD				OBJ;
-	sSUB				OBJ;
-	sLT					OBJ;
-	sNEG				OBJ;
-	sNOT				OBJ;
 }
 
 type TrObject struct {
@@ -235,112 +194,49 @@ type TrRegexp struct {
   	re				*pcre;
 }
 
-/* vm */
-TrVM *TrVM_new();
-OBJ TrVM_backtrace(vm *struct TrVM);
-OBJ TrVM_eval(vm *struct TrVM, char *code, char *filename);
-OBJ TrVM_load(vm *struct TrVM, char *filename);
-void TrVM_destroy(TrVM *vm);
-
-/* string */
-OBJ TrSymbol_new(vm *struct TrVM, const char *str);
-OBJ TrString_new(vm *struct TrVM, const char *str, size_t len);
-OBJ TrString_new2(vm *struct TrVM, const char *str);
-OBJ TrString_new3(vm *struct TrVM, size_t len);
-OBJ TrString_push(vm *struct TrVM, OBJ self, OBJ other);
-OBJ tr_sprintf(vm *struct TrVM, const char *fmt, ...);
-void TrSymbol_init(vm *struct TrVM);
-void TrString_init(vm *struct TrVM);
-
-/* number */
-void TrFixnum_init(vm *struct TrVM);
-
-/* hash */
-OBJ TrHash_new(vm *struct TrVM);
-OBJ TrHash_new2(vm *struct TrVM, size_t n, OBJ items[]);
-void TrHash_init(vm *struct TrVM);
-
-/* range */
-OBJ TrRange_new(vm *struct TrVM, OBJ start, OBJ end, int exclusive);
-void TrRange_init(vm *struct TrVM);
-
-/* object */
-OBJ TrObject_alloc(vm *struct TrVM, OBJ class);
-int TrObject_type(vm *struct TrVM, OBJ obj);
-OBJ TrObject_method(vm *struct TrVM, OBJ self, OBJ name);
-OBJ TrObject_send(vm *struct TrVM, OBJ self, int argc, OBJ argv[]);
-OBJ TrObject_const_set(vm *struct TrVM, OBJ self, OBJ name, OBJ value);
-OBJ TrObject_const_get(vm *struct TrVM, OBJ self, OBJ name);
-OBJ TrObject_add_singleton_method(vm *struct TrVM, OBJ self, OBJ name, OBJ method);
-void TrObject_preinit(vm *struct TrVM);
-void TrObject_init(vm *struct TrVM);
-
-/* kernel */
-void TrKernel_init(vm *struct TrVM);
-
-/* primitive */
-void TrPrimitive_init(vm *struct TrVM);
-
-/* error */
-OBJ TrException_new(vm *struct TrVM, OBJ class, OBJ message);
-OBJ TrException_backtrace(vm *struct TrVM, OBJ self);
-OBJ TrException_set_backtrace(vm *struct TrVM, OBJ self, OBJ backtrace);
-OBJ TrException_default_handler(vm *struct TrVM, OBJ exception);
-void TrError_init(vm *struct TrVM);
-
-/* regexp */
-OBJ TrRegexp_new(vm *struct TrVM, char *pattern, int options);
-void TrRegex_free(vm *struct TrVM, OBJ self);
-void TrRegexp_init(vm *struct TrVM);
-
 #ifdef __unix__
   #include <unistd.h>
 #else
   #include "freegetopt/getopt.h"
 #endif
 
-static int usage() {
-  printf("usage: tinyrb [options] [file]\n"
-         "options:\n"
-         "  -e   eval code\n"
-         "  -d   show debug info (multiple times for more)\n"
-         "  -v   print version\n"
-         "  -h   print this\n");
-  return 1;
+func usage() {
+	fmt.println("usage: tinyrb [options] [file]");
+	fmt.println("options:";
+	fmt.println("  -e   eval code");
+	fmt.println("  -d   show debug info (multiple times for more)");
+	fmt.println("  -v   print version");
+	fmt.println("  -h   print this");
+	return 1;
 }
 
 func main(argc int, argv *[]char) {
-  int opt;
-  TrVM *vm = TrVM_new();
+	int opt;
+	vm := newRubyVM();
 
-  while((opt = getopt(argc, argv, "e:vdh")) != -1) {
-    switch(opt) {
-      case 'e':
-        TR_FAILSAFE(TrVM_eval(vm, optarg, "<eval>"));
-        return 0;
-      case 'v':
-        printf("tinyrb %s\n", TR_VERSION);
-        return 1;
-      case 'd':
-        vm.debug++;
-        continue;
-      case 'h':
-      default:
-        return usage();
-    }
-  }
+	while((opt = getopt(argc, argv, "e:vdh")) != -1) {
+		switch(opt) {
+			case 'e':
+				TR_FAILSAFE(vm.eval(optarg, "<eval>"));
+				return 0;
+			case 'v':
+				fmt.println("tinyrb %s", TR_VERSION);
+				return 1;
+			case 'd':
+				vm.debug++;
+				continue;
+			default:
+				return usage();
+		}
+	}
 
-  /* These lines allow us to tread argc and argv as though 
-   * any switches were not there */
-  argc -= optind;
-  argv += optind;
+	// These lines allow us to tread argc and argv as though any switches were not there
+	argc -= optind;
+	argv += optind;
   
-  if (argc > 0) {
-    TR_FAILSAFE(TrVM_load(vm, argv[argc-1]));
-    return 0;
-  }
-  
-  TrVM_destroy(vm);
-  
-  return usage();
+	if (argc > 0) {
+		TR_FAILSAFE(vm.load(argv[argc - 1]));
+		return 0;
+	}
+	return usage();
 }

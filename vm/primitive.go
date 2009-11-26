@@ -1,19 +1,19 @@
 #include "tr.h"
 #include "internal.h"
 
-OBJ TrNil_to_s(vm *struct TrVM, OBJ self) {
+OBJ TrNil_to_s(vm *RubyVM, OBJ self) {
 	return TrString_new2(vm, "");
 }
 
-OBJ TrTrue_to_s(vm *struct TrVM, OBJ self) {
+OBJ TrTrue_to_s(vm *RubyVM, OBJ self) {
 	return TrString_new2(vm, "true");
 }
 
-OBJ TrFalse_to_s(vm *struct TrVM, OBJ self) {
+OBJ TrFalse_to_s(vm *RubyVM, OBJ self) {
 	return TrString_new2(vm, "false");
 }
 
-void TrPrimitive_init(vm *struct TrVM) {
+void TrPrimitive_init(vm *RubyVM) {
   OBJ nilc = TR_INIT_CORE_CLASS(NilClass, Object);
   OBJ truec = TR_INIT_CORE_CLASS(TrueClass, Object);
   OBJ falsec = TR_INIT_CORE_CLASS(FalseClass, Object);

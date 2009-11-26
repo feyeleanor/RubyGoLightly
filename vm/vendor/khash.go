@@ -260,7 +260,7 @@ static const double __ac_HASH_UPPER = 0.77;
 #define kh_int_hash_equal(a, b) (a == b)
 #define kh_int64_hash_func(key) (uint32_t)((key)>>33^(key)^(key)<<11)
 #define kh_int64_hash_equal(a, b) (a == b)
-static inline khint_t __ac_X31_hash_string(const char *s)
+static inline khint_t __ac_X31_hash_string(s *string)
 {
 	khint_t h = *s;
 	if (h) for (++s ; *s; ++s) h = (h << 5) - h + *s;
@@ -300,7 +300,7 @@ static inline khint_t __ac_X31_hash_string(const char *s)
 #define KHASH_MAP_INIT_INT64(name, khval_t)								\
 	KHASH_INIT(name, uint64_t, khval_t, 1, kh_int64_hash_func, kh_int64_hash_equal)
 
-typedef const char *kh_cstr_t;
+type kh_cstr_t *string;
 #define KHASH_SET_INIT_STR(name)										\
 	KHASH_INIT(name, kh_cstr_t, char, 0, kh_str_hash_func, kh_str_hash_equal)
 

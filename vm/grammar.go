@@ -10,8 +10,8 @@
 #define YYREALLOC TR_REALLOC
 #define yyvm      compiler.vm
 
-char *charbuf;
-char *sbuf;
+charbuf *string;
+sbuf *string;
 size_t nbuf;
 Compiler *compiler;
 
@@ -26,11 +26,11 @@ Compiler *compiler;
 
 /* TODO grow buffer */
 #define STRING_MAX   4096
-#define STRING_START sbuf = TR_ALLOC_N(char, STRING_MAX); nbuf = 0
+#define STRING_START sbuf = make([]byte, STRING_MAX); nbuf = 0
 #define STRING_PUSH(P,L) \
-  assert(nbuf + (L) < 4096); \
-  TR_MEMCPY_N(sbuf + nbuf, (P), char, (L)); \
-  nbuf += (L)
+	assert(nbuf + (L) < 4096); \
+	memcpy(sbuf + nbuf, P, sizeof(char) * L); \
+	nbuf += (L)
 
 %}
 
@@ -80,7 +80,7 @@ AsgnCall   =                                { rcv = 0 }
             ( rcv:Value '.'
             )? ( rmsg:Message '.'           { rcv = NODE2(SEND, rcv, rmsg) }
                )* msg:ID - asg:ASSIGN
-                  - val:Stmt                { struct TrVM *vm = yyvm; $$ = NODE2(SEND, rcv, NODE2(MSG, SYMCAT(msg, asg), NODES(NODE(ARG, val)))) }
+                  - val:Stmt                { vm = RubyVM *(yyvm); $$ = NODE2(SEND, rcv, NODE2(MSG, SYMCAT(msg, asg), NODES(NODE(ARG, val)))) }
 
 Receiver  = (                               { rcv = 0 }
               rcv:Call
@@ -292,7 +292,7 @@ SEP       = ( - Comment? (EOL | ';') )+
 
 /* Raise a syntax error. */
 OBJ yyerror() {
-  struct TrVM *vm = yyvm;
+  vm = RubyVM *(yyvm);
   OBJ msg = tr_sprintf(vm, "SyntaxError in %s at line %d", TR_STR_PTR(compiler.filename), compiler.line);
   /* Stupid ugly code, just to build a string... I suck... */
   if (yytext[0]) TrString_push(vm, msg, tr_sprintf(vm, " near token '%s'", yytext));
@@ -312,7 +312,7 @@ OBJ yyerror() {
 
 /* Compiles code to a Block.
    Returns NULL on error, error is stored in TR_EXCEPTION. */
-func Block_compile(vm *TrVM, code char *, fn char *, lineno size_t) Block * {
+func Block_compile(vm *RubyVM, code *string, fn *string, lineno size_t) Block * {
 	assert(!compiler && "parser not reentrant");
 	charbuf = code;
 	compiler = newCompiler(vm, fn);

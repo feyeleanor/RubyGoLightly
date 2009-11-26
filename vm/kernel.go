@@ -1,44 +1,43 @@
 #include "tr.h"
 #include "internal.h"
 
-func TrBinding_new(vm *TrVM, f *Frame) OBJ {
+func TrBinding_new(vm *RubyVM, f *Frame) OBJ {
   TrBinding *b = TR_INIT_CORE_OBJECT(Binding);
   b.frame = f;
   return OBJ(b);
 }
 
-void TrBinding_init(vm *struct TrVM) {
+void TrBinding_init(vm *RubyVM) {
   TR_INIT_CORE_CLASS(Binding, Object);
 }
 
-static OBJ TrKernel_puts(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
-	int i;
-	for (i = 0; i < argc; ++i) printf("%s\n", TR_STR_PTR(tr_send2(argv[i], "to_s")));
+func TrKernel_puts(vm *RubyVM, self OBJ, argc int, argv []OBJ) OBJ {
+	for object := range argv { fmt.println("%s", TR_STR_PTR(tr_send2(object, "to_s"))); }
 	return TR_NIL;
 }
 
-static OBJ TrKernel_binding(vm *struct TrVM, OBJ self) {
+func TrKernel_binding(vm *RubyVM, self OBJ) OBJ {
 	return TrBinding_new(vm, vm.frame.previous);
 }
 
-static OBJ TrKernel_eval(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
+func TrKernel_eval(vm *RubyVM, self OBJ, argc int, argv []OBJ) OBJ {
 	if argc < 1 { tr_raise(ArgumentError, "string argument required") }
 	if argc > 4 { tr_raise(ArgumentError, "Too much arguments") }
-	OBJ string = argv[0];
-	Frame *f = (argc > 1 && argv[1]) ? TR_CBINDING(argv[1]).frame : vm.frame;
-	char *filename = (argc > 2 && argv[1]) ? TR_STR_PTR(argv[2]) : "<eval>";
-	size_t lineno = argc > 3 ? TR_FIX2INT(argv[3]) : 0;
-	Block *blk = Block_compile(vm, TR_STR_PTR(string), filename, lineno);
+	code_string := argv[0];
+	frame := (argc > 1 && argv[1]) ? TR_CBINDING(argv[1]).frame : vm.frame;
+	filename := (argc > 2 && argv[1]) ? TR_STR_PTR(argv[2]) : "<eval>";
+	lineno := argc > 3 ? TR_FIX2INT(argv[3]) : 0;
+	blk := Block_compile(vm, TR_STR_PTR(code_string), filename, lineno);
 	if !blk { return TR_UNDEF }
 	if vm.debug { blk.dump(vm) }
-	return TrVM_run(vm, blk, f.self, f.class, blk.locals.Len(), f.stack);
+	return vm.run(blk, frame.self, frame.class, frame.stack[0:blk.locals.Len() - 1]);
 }
 
-static OBJ TrKernel_load(vm *struct TrVM, OBJ self, OBJ filename) {
-	return TrVM_load(vm, TR_STR_PTR(filename));
+func TrKernel_load(vm *RubyVM, self, filename OBJ) OBJ {
+	return vm.load(TR_STR_PTR(filename));
 }
 
-static OBJ TrKernel_raise(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
+static OBJ TrKernel_raise(vm *RubyVM, OBJ self, int argc, OBJ argv[]) {
 	OBJ e = TR_NIL;
 	switch (argc) {
 		case 0:
@@ -57,11 +56,11 @@ static OBJ TrKernel_raise(vm *struct TrVM, OBJ self, int argc, OBJ argv[]) {
 		default:
 			tr_raise(ArgumentError, "wrong number of arguments (%d for 2)", argc);
 	}
-	TrException_set_backtrace(vm, e, TrVM_backtrace(vm));
+	TrException_set_backtrace(vm, e, vm.backtrace());
 	TR_THROW(EXCEPTION, e);
 }
 
-void TrKernel_init(vm *struct TrVM) {
+void TrKernel_init(vm *RubyVM) {
   OBJ m = tr_defmodule("Kernel");
   TR_CORE_CLASS(Object).include(vm, m);
   tr_def(m, "puts", TrKernel_puts, -1);
