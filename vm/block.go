@@ -63,17 +63,17 @@ func (b *Block) dump2(vm *RubyVM, level int) OBJ {
 	for (i = 0; i < b.k.Len(); ++i) { fmt.Println(".value  %-8s ; %lu", INSPECT_K(b.k.At(i)), i); }
 	for (i = 0; i < b.strings.Len; ++i) { fmt.Println(".string %-8s ; %lu", b.strings.At(i), i); }
 	for (i = 0; i < b.code.Len(); ++i) {
-		TrInst op = b.code.At(i);
-		fmt.printf("[%03lu] %-10s %3d %3d %3d", i, OPCODE_NAMES[GET_OPCODE(op)], GETARG_A(op), GETARG_B(op), GETARG_C(op));
-		switch (GET_OPCODE(op)) {
-			case TR_OP_LOADK:    fmt.Printf(" ; R[%d] = %s", GETARG_A(op), INSPECT_K(b.k.At(GETARG_Bx(op))));
-			case TR_OP_STRING:   fmt.Printf(" ; R[%d] = \"%s\"", GETARG_A(op), b.strings.At(GETARG_Bx(op)));
-			case TR_OP_LOOKUP:   fmt.Printf(" ; R[%d] = R[%d].method(:%s)", GETARG_A(op)+1, GETARG_A(op), INSPECT_K(b.k.At(GETARG_Bx(op))));
-			case TR_OP_CALL:     fmt.Printf(" ; R[%d] = R[%d].R[%d](%d)", GETARG_A(op), GETARG_A(op), GETARG_A(op)+1, GETARG_B(op)>>1);
-			case TR_OP_SETUPVAL: fmt.Printf(" ; %s = R[%d]", INSPECT_K(b.upvals.At(GETARG_B(op))), GETARG_A(op));
-			case TR_OP_GETUPVAL: fmt.Printf(" ; R[%d] = %s", GETARG_A(op), INSPECT_K(b.upvals.At(GETARG_B(op))));
-			case TR_OP_JMP:      fmt.Printf(" ; %d", GETARG_sBx(op));
-			case TR_OP_DEF:      fmt.Printf(" ; %s => %p", INSPECT_K(b.k.At(GETARG_Bx(op))), b.blocks.At(GETARG_A(op)));
+		op := b.code.At(i);
+		fmt.printf("[%03lu] %-10s %3d %3d %3d", i, OPCODE_NAMES[op.OpCode], op.A, op.B, op.C);
+		switch (op.OpCode) {
+			case TR_OP_LOADK:    fmt.Printf(" ; R[%d] = %s", op.A, INSPECT_K(b.k.At(op.Get_Bx())));
+			case TR_OP_STRING:   fmt.Printf(" ; R[%d] = \"%s\"", op.A, b.strings.At(op.Get_Bx()));
+			case TR_OP_LOOKUP:   fmt.Printf(" ; R[%d] = R[%d].method(:%s)", op.A + 1, op.A, INSPECT_K(b.k.At(op.Get_Bx())));
+			case TR_OP_CALL:     fmt.Printf(" ; R[%d] = R[%d].R[%d](%d)", op.A, op.A, op.A + 1, op.B >> 1);
+			case TR_OP_SETUPVAL: fmt.Printf(" ; %s = R[%d]", INSPECT_K(b.upvals.At(op.B)), op.A);
+			case TR_OP_GETUPVAL: fmt.Printf(" ; R[%d] = %s", op.A, INSPECT_K(b.upvals.At(op.B)));
+			case TR_OP_JMP:      fmt.Printf(" ; %d", op.Get_sBx());
+			case TR_OP_DEF:      fmt.Printf(" ; %s => %p", INSPECT_K(b.k.At(op.Get_Bx())), b.blocks.At(op.A));
 		}
 		fmt.Println();
 	}

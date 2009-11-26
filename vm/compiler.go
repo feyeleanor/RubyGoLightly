@@ -83,10 +83,10 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 			}
 
 		case NODE_VALUE:
-			b.code.Push(CREATE_ABx(TR_OP_LOADK, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_LOADK, reg, b.push_value(self.args[0])));
 
 		case NODE_STRING: {
-			b.code.Push(CREATE_ABx(TR_OP_STRING, reg, b.push_string(TR_STR_PTR(self.args[0]))));
+			b.code.Push(newExtendedOP(TR_OP_STRING, reg, b.push_string(TR_STR_PTR(self.args[0]))));
 
 		case NODE_ARRAY:
 			size := 0;
@@ -105,7 +105,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				}
 				if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside Array") }
 			}
-			b.code.Push(CREATE_ABC(TR_OP_NEWARRAY, reg, size, 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_NEWARRAY, A: reg, B: size});
 
 		case NODE_HASH:
 			size := 0;
@@ -124,7 +124,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				}
 				if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside Hash") }
 			}
-			b.code.Push(CREATE_ABC(TR_OP_NEWHASH, reg, (size / 2), 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_NEWHASH, A: reg, B: size / 2});
 
 		case NODE_RANGE:
 			if reg >= b.regc { b.regc = reg + 1; }
@@ -134,7 +134,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 			self.args[1].compile(vm, c, b, next_reg);
 			if next_reg >= b.regc { b.regc = next_reg + 1; }
 			if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside Range") }
-			b.code.Push(CREATE_ABC(TR_OP_NEWRANGE, reg, next_reg, self.args[2]));
+			b.code.Push(MachineOp{OpCode: TR_OP_NEWRANGE, A: reg, B: next_reg, C: self.args[2]});
 
 		case NODE_ASSIGN:
 			name := self.args[0];
@@ -142,45 +142,45 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 			self.args[1].compile(vm, c, b, reg);
 			if (b.find_upval_in_scope(name) != -1) {
 				// upval
-				b.code.Push(CREATE_ABC(TR_OP_SETUPVAL, reg, b.push_upval(name), 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_SETUPVAL, A: reg, B: b.push_upval(name)});
 
 			} else {
 				// local
 				i = b.push_local(name);
 				last_inst := b.code.Last();
-				switch (GET_OPCODE(last_inst)) {
+				switch (last_inst.OpCode) {
 					case TR_OP_ADD, TR_OP_SUB, TR_OP_LT, TR_OP_NEG, TR_OP_NOT:
 						// Those instructions can load direcly into a local
 						SETARG_A(last_inst, i);
 
 					default:
-						if i != reg { b.code.Push(CREATE_ABC(TR_OP_MOVE, i, reg, 0)); }
+						if i != reg { b.code.Push(MachineOp{OpCode: TR_OP_MOVE, A: i, B: reg}); }
 				}
 			}
 
 		case NODE_SETIVAR:
 			if reg >= b.regc { b.regc = reg + 1; }
 			self.args[1].compile(vm, c, b, reg);
-			b.code.Push(CREATE_ABx(TR_OP_SETIVAR, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_SETIVAR, reg, b.push_value(self.args[0])));
 
 		case NODE_GETIVAR:
-			b.code.Push(CREATE_ABx(TR_OP_GETIVAR, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_GETIVAR, reg, b.push_value(self.args[0])));
 
 		case NODE_SETCVAR:
 			if reg >= b.regc { b.regc = reg + 1; }
 			self.args[1].compile(vm, c, b, reg);
-			b.code.Push(CREATE_ABx(TR_OP_SETCVAR, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_SETCVAR, reg, b.push_value(self.args[0])));
 
 		case NODE_GETCVAR:
-			b.code.Push(CREATE_ABx(TR_OP_GETCVAR, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_GETCVAR, reg, b.push_value(self.args[0])));
 
 		case NODE_SETGLOBAL:
 			if reg >= b.regc { b.regc = reg + 1; }
 			self.args[1].compile(vm, c, b, reg);
-			b.code.Push(CREATE_ABx(TR_OP_SETGLOBAL, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_SETGLOBAL, reg, b.push_value(self.args[0])));
 
 		case NODE_GETGLOBAL:
-			b.code.Push(CREATE_ABx(TR_OP_GETGLOBAL, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_GETGLOBAL, reg, b.push_value(self.args[0])));
 
 		case NODE_SEND:
 			// can also be a variable access
@@ -189,11 +189,11 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 			assert(msg.ntype == NODE_MSG);
 			// local
 			if (i := b.find_local(name)) != -1 {
-				if reg != i { b.code.Push(CREATE_ABC(TR_OP_MOVE, reg, i, 0)); }
+				if reg != i { b.code.Push(MachineOp{OpCode: TR_OP_MOVE, A: reg, B: i}); }
 
 			// upval
 			} else if b.find_upval_in_scope(name) != -1 {
-				b.code.Push(CREATE_ABC(TR_OP_GETUPVAL, reg, b.push_upval(name), 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_GETUPVAL, A: reg, B: b.push_upval(name)});
 
 			// method call
 			} else {
@@ -202,7 +202,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 					if reg >= b.regc { b.regc = reg + 1; }
 					self.args[0].compile(vm, c, b, reg);
 				} else {
-					b.code.Push(CREATE_ABC(TR_OP_SELF, reg, 0, 0));
+					b.code.Push(MachineOp{OpCode: TR_OP_SELF, A: reg});
 				}
 				i = b.push_value(name);
 				// args
@@ -241,11 +241,11 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 					blk_reg := blk.locals.Len();
 					if blk_reg >= b.regc { b.regc = blk_reg + 1; }
 					blkn.compile(vm, c, blk, blk_reg);
-					blk.code.Push(CREATE_ABC(TR_OP_RETURN, blk_reg, 0, 0));
+					blk.code.Push(MachineOp{OpCode: TR_OP_RETURN, A: blk_reg});
 				}
-				b.code.Push(CREATE_ABC(TR_OP_BOING, 0, 0, 0));
-				b.code.Push(CREATE_ABx(TR_OP_LOOKUP, reg, i));
-				b.code.Push(CREATE_ABC(TR_OP_CALL, reg, argc, blki));
+				b.code.Push(MachineOp{OpCode: TR_OP_BOING});
+				b.code.Push(newExtendedOP(TR_OP_LOOKUP, reg, i));
+				b.code.Push(MachineOp{OpCode: TR_OP_CALL, A: reg, B: argc, C: blki});
 
 				// if passed block has upvalues generate one pseudo-instructions for each (A reg is ignored).
 				if blk && blk.upvals.Len() {
@@ -253,9 +253,9 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 					upval_name := blk.upvals.At(j);
 					vali := b.find_local(upval_name);
 					if vali != -1 {
-						b.code.Push(CREATE_ABC(TR_OP_MOVE, 0, vali, 0));
+						b.code.Push(MachineOp{OpCode: TR_OP_MOVE, B: vali});
 					} else {
-						b.code.Push(CREATE_ABC(TR_OP_GETUPVAL, 0, b.find_upval(upval_name), 0));
+						b.code.Push(MachineOp{OpCode: TR_OP_GETUPVAL, B: b.find_upval(upval_name)});
 					}
 				}
 			}
@@ -266,9 +266,9 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 			self.args[0].compile(vm, c, b, reg);
 
 			if self.ntype == NODE_IF {
-				b.code.Push(CREATE_ABC(TR_OP_JMPUNLESS, reg, 0, 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_JMPUNLESS, A: reg});
 			} else {
-				b.code.Push(CREATE_ABC(TR_OP_JMPIF, reg, 0, 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_JMPIF, A: reg});
 			}
 			jmp := b.code.Len() - 1;
  
@@ -280,9 +280,9 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				reg += b.locals.Len() - nlocal;
 				if reg >= b.regc { b.regc = reg + 1; }
 			}
-			SETARG_sBx(b.code.At(jmp), b.code.Len() - jmp);
+			b.code.At(jmp).SetxBx(b.code.Len() - jmp);
 			// else body
-			b.code.Push(CREATE_ABC(TR_OP_JMP, reg, 0, 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_JMP, A: reg});
 			jmp := b.code.Len() - 1;
 
 			if self.args[2] {
@@ -295,9 +295,9 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				}
 			} else {
 				// if condition fail and not else block nil is returned
-				b.code.Push(CREATE_ABC(TR_OP_NIL, reg, 0, 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_NIL, A: reg});
 			}
-			SETARG_sBx(b.code.At(jmp), b.code.Len() - jmp - 1);
+			b.code.At(jmp).Set_sBx(b.code.Len() - jmp - 1);
 
 		case NODE_WHILE, NODE_UNTIL:
 			jmp_beg := b.code.Len();
@@ -306,9 +306,9 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 			self.args[0].compile(vm, c, b, reg);
 
 			if self.ntype == NODE_WHILE {
-				b.code.Push(CREATE_ABx(TR_OP_JMPUNLESS, reg, 0));
+				b.code.Push(newExtendedOP(TR_OP_JMPUNLESS, reg, 0));
 			} else {
-				b.code.Push(CREATE_ABx(TR_OP_JMPIF, reg, 0));
+				b.code.Push(newExtendedOP(TR_OP_JMPIF, reg, 0));
 			}
 			jmp_end := b.code.Len();
 			// body
@@ -319,9 +319,9 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				reg += b.locals.Len() - nlocal;
 				if reg >= b.regc { b.regc = reg + 1; }
 			}
-			SETARG_sBx(b.code.At(jmp_end - 1), b.code.Len() - jmp_end + 1);
-		  	i := CREATE_ABx(TR_OP_JMP, 0, 0);
-		  	SETARG_sBx(i, 0 - (b.code.Len() - jmp_beg) - 1);
+			b.code.At(jmp_end - 1).Set_sBx(b.code.Len() - jmp_end + 1);
+		  	i := newExtendedOP(TR_OP_JMP, 0, 0);
+		  	i.SetxBx(jmp_beg - (b.code.Len() + 1));
 		  	b.code.Push(i);
 
 		case NODE_AND, NODE_OR:
@@ -331,25 +331,25 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 // Appears to be erroneously compiling the same node twice
 //			self.args[0].compile(vm, c, b, reg);
 			if self.ntype == NODE_AND {
-				b.code.Push(CREATE_ABC(TR_OP_JMPUNLESS, reg, 0, 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_JMPUNLESS, A: reg});
 			} else {
-				b.code.Push(CREATE_ABC(TR_OP_JMPIF, reg, 0, 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_JMPIF, A: reg});
 			}
 			jmp := b.code.Len() - 1;
 
 			// arg
 			if reg >= b.regc { b.regc = reg + 1; }
 			self.args[1].compile(vm, c, b, reg);
-			SETARG_sBx(b.code.At(jmp), b.code.Len() - jmp - 1);
+			b.code.At(jmp).Set_sBx(b.code.Len() - jmp - 1);
 
 		case NODE_BOOL:
-			b.code.Push(CREATE_ABC(TR_OP_BOOL, reg, self.args[0], 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_BOOL, A: reg, B: self.args[0]});
 
 		case NODE_NIL:
-			b.code.Push(CREATE_ABC(TR_OP_NIL, reg, 0, 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_NIL, A: reg});
 
 		case NODE_SELF:
-			b.code.Push(CREATE_ABC(TR_OP_SELF, reg, 0, 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_SELF, A: reg});
 
 		case NODE_RETURN:
 			if self.args[0] {
@@ -357,13 +357,13 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				self.args[0].compile(vm, c, b, reg);
 			}
 			if b.parent {
-				b.code.Push(CREATE_ABC(TR_OP_THROW, TR_THROW_RETURN, reg, 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_THROW, A: TR_THROW_RETURN, B: reg});
 			} else {
-				b.code.Push(CREATE_ABC(TR_OP_RETURN, reg, 0, 0));
+				b.code.Push(MachineOp{OpCode: TR_OP_RETURN, A: reg});
 			}
 
 		case NODE_BREAK:
-			b.code.Push(CREATE_ABC(TR_OP_THROW, TR_THROW_BREAK, 0, 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_THROW, A: TR_THROW_BREAK});
 
 		case NODE_YIELD: {
 			argc := 0;
@@ -381,7 +381,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				}
 				if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside yield") }
 			}
-			b.code.Push(CREATE_ABC(TR_OP_YIELD, reg, argc, 0));
+			b.code.Push(MachineOp{OpCode: TR_OP_YIELD, A: reg, B:argc});
 
 		case NODE_DEF: {
 			method := self.args[0];
@@ -413,19 +413,19 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				blk_reg += blk.locals.Len() - nlocal;
 				if blk_reg >= b.regc { b.regc = blk_reg + 1; }
 			}
-			blk.code.Push(CREATE_ABC(TR_OP_RETURN, blk_reg, 0, 0));
+			blk.code.Push(MachineOp{OpCode: TR_OP_RETURN, A: blk_reg});
 
 			if method.args[0] {
 				// metaclass def
 				if reg >= b.regc { b.regc = reg + 1; }
 				method.args[0].compile(vm, c, b, reg);
-				b.code.Push(CREATE_ABx(TR_OP_METADEF, blki, b.push_value(method.args[1])));
-				b.code.Push(CREATE_ABC(TR_OP_BOING, reg, 0, 0));
+				b.code.Push(newExtendedOP(TR_OP_METADEF, blki, b.push_value(method.args[1])));
+				b.code.Push(MachineOp{OpCode: TR_OP_BOING, A: reg});
 			}
 
 
 			} else {
-				b.code.Push(CREATE_ABx(TR_OP_DEF, blki, b.push_value(method.args[1])));
+				b.code.Push(newExtendedOP(TR_OP_DEF, blki, b.push_value(method.args[1])));
 			}
 
 		case NODE_CLASS, NODE_MODULE:
@@ -442,46 +442,46 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
 				reg += blk.locals.Len() - nlocal;
 				if reg >= b.regc { b.regc = reg + 1; }
 			}
-			blk.code.Push(CREATE_ABC(TR_OP_RETURN, reg, 0, 0));
+			blk.code.Push(MachineOp{OpCode: TR_OP_RETURN, A: reg});
 
 			if (self.ntype == NODE_CLASS) {
 				// superclass
 				if self.args[1] {
-					b.code.Push(CREATE_ABx(TR_OP_GETCONST, reg, b.push_value(self.args[1])));
+					b.code.Push(newExtendedOP(TR_OP_GETCONST, reg, b.push_value(self.args[1])));
 				} else {
-					b.code.Push(CREATE_ABC(TR_OP_NIL, reg, 0, 0));
+					b.code.Push(MachineOp{OpCode: TR_OP_NIL, A: reg});
 				}
-				b.code.Push(CREATE_ABx(TR_OP_CLASS, blki, b.push_value(self.args[0])));
-				b.code.Push(CREATE_ABC(TR_OP_BOING, reg, 0, 0));
+				b.code.Push(newExtendedOP(TR_OP_CLASS, blki, b.push_value(self.args[0])));
+				b.code.Push(MachineOp{OpCode: TR_OP_BOING, A: reg});
 
 			} else {
-				b.code.Push(CREATE_ABx(TR_OP_MODULE, blki, b.push_value(self.args[0])));
+				b.code.Push(newExtendedOP(TR_OP_MODULE, blki, b.push_value(self.args[0])));
 			}
 
 		case NODE_CONST:
-			b.code.Push(CREATE_ABx(TR_OP_GETCONST, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_GETCONST, reg, b.push_value(self.args[0])));
 
 		case NODE_SETCONST:
 			if reg >= b.regc { b.regc = reg + 1; }
 			self.args[1].compile(vm, c, b, reg);
-			b.code.Push(CREATE_ABx(TR_OP_SETCONST, reg, b.push_value(self.args[0])));
+			b.code.Push(newExtendedOP(TR_OP_SETCONST, reg, b.push_value(self.args[0])));
 
 		case NODE_ADD, NODE_SUB, NODE_LT:
 			rcv := self.args[0].compile_to_RK(vm, c, b, reg);
 			arg := self.args[1].compile_to_RK(vm, c, b, reg + 1);
 			if (reg + 1) >= b.regc { b.regc = reg + 2; }
 			switch self.ntype {
-				case NODE_ADD:	b.code.Push(CREATE_ABC(TR_OP_ADD, reg, rcv, arg));
-				case NODE_SUB:	b.code.Push(CREATE_ABC(TR_OP_SUB, reg, rcv, arg));
-				case NODE_LT:	b.code.Push(CREATE_ABC(TR_OP_LT, reg, rcv, arg));
+				case NODE_ADD:	b.code.Push(MachineOp{OpCode: TR_OP_ADD, A: reg, B: rcv, C: arg});
+				case NODE_SUB:	b.code.Push(MachineOp{OpCode: TR_OP_SUB, A: reg, B: rcv, C: arg});
+				case NODE_LT:	b.code.Push(MachineOp{OpCode: TR_OP_LT, A: reg, B: rcv, C: arg});
 				default:		assert(0);
 			}
 
 		case NODE_NEG, NODE_NOT:
 			rcv := self.args[0].compile_to_RK(vm, c, b, reg);
 			switch self.ntype {
-				case NODE_NEG:	b.code.Push(CREATE_ABC(TR_OP_NEG, reg, rcv, 0));
-				case NODE_NOT:	b.code.Push(CREATE_ABC(TR_OP_NOT, reg, rcv, 0));
+				case NODE_NEG:	b.code.Push(MachineOp{OpCode: TR_OP_NEG, A: reg, B: rcv});
+				case NODE_NOT:	b.code.Push(MachineOp{OpCode: TR_OP_NOT, A: reg, B: rcv});
 				default:		assert(0);
 			}
 
@@ -496,5 +496,5 @@ func (self *Compiler) compile {
 	b := self.block;
 	b.filename = self.filename;
 	self.node.compile(self.vm, c, b, 0);
-	b.code.Push(CREATE_ABC(TR_OP_RETURN, 0, 0, 0));
+	b.code.Push(MachineOp{OpCode: TR_OP_RETURN});
 }

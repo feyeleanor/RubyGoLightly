@@ -1,4 +1,4 @@
-package vm
+package RubyVM
 
 import (
 	"os";						// operating system support
@@ -13,8 +13,6 @@ import (
 	"call";
 )
 
-type TrInst uint;
-
 type RubyVM struct {
 	symbols				*map[string] string;
 	globals				*map[string] OBJ;
@@ -27,7 +25,7 @@ type RubyVM struct {
 	debug				int;
 	throw_reason		int;
 	throw_value	OBJ;
-  
+
 	// exceptions
 	cException			OBJ;
 	cScriptError		OBJ;
@@ -52,11 +50,11 @@ type RubyVM struct {
 	sNOT				OBJ;
 }
 
-func (vm *RubyVM) lookup(block *Block, receiver, msg OBJ, ip *TrInst) OBJ {
+func (vm *RubyVM) lookup(block *Block, receiver, msg OBJ, ip *MachineOP) OBJ {
 	method := TrObject_method(vm, receiver, msg);
 	if method == TR_UNDEF { return TR_UNDEF }
 
-	TrInst *boing = (ip-1);
+	boing = *(ip - 1);
 	// TODO do not prealloc TrCallSite here, every one is a memory leak and a new one is created on polymorphic calls.
 	TrCallSite *s = (kv_pushp(TrCallSite, block.sites));
 	s.class = TR_CLASS(receiver);
@@ -69,15 +67,15 @@ func (vm *RubyVM) lookup(block *Block, receiver, msg OBJ, ip *TrInst) OBJ {
 	}
   
 	// Implement Monomorphic method cache by replacing the previous instruction (BOING) w/ CACHE that uses the CallSite to find the method instead of doing a full lookup.
-	if GET_OPCODE(*boing) == TR_OP_CACHE {
+	if (*boing).OpCode == TR_OP_CACHE {
 		// Existing call site
 		// TODO maybe take existing call site hit miss into consideration to replace it with this one. For now, we just don't replace it, the first one is always the cached one.
 	} else {
 		// New call site, we cache it fo shizzly!
-		SET_OPCODE(*boing, TR_OP_CACHE);
-		SETARG_A(*boing, GETARG_A(*ip)); 			// receiver register
-		SETARG_B(*boing, 1);						// jmp
-		SETARG_C(*boing, block.sites.Len() - 1);	// CallSite index
+		(*boing).OpCode = TR_OP_CACHE;
+		(*boing).A = (*ip).A; 						// receiver register
+		(*boing).B = 1;								// jmp
+		(*boing).C = block.sites.Len() - 1;			// CallSite index
 	}
 	return OBJ(s);
 }
@@ -157,25 +155,13 @@ func (vm *RubyVM) yield(frame *Frame, args []OBJ) OBJ {
 	return ret;
 }
 
-// dispatch macros
-#define DISPATCH       (i = *++ip); break
-
-// register access macros
-#define nA     GETARG_A(*(ip+1))
-#define nB     GETARG_B(*(ip+1))
-#define RK(X)  (X & (1 << (SIZE_B - 1)) ? k[X & ~0x100] : stack[X])
-
-#define RETURN(V) \
-  /* TODO GC release everything on the stack before returning */ \
-  return (V)
-
 // Interprets the code in b.code. Returns TR_UNDEF on error.
 func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, closure *Closure) OBJ {
 	frame.stack := make([]OBJ, block.regc);
-	TrInst *ip = block.code.a + start;
+	ip := *block.code.a + start;
 	stack := frame.stack;
 
-	TrInst i = *ip;
+	i := *ip;
 	OBJ *k = block.k.a;
 	Block **blocks = block.blocks.a;
 	frame.line = block.line;
@@ -190,131 +176,131 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 	}
   
 	for {
-		switch GET_OPCODE(i) {
+		switch i.OpCode {
 			// no-op
 			case TR_OP_BOING:
 
     		// register loading
 			case TR_OP_MOVE:
-				stack[GETARG_A(i)] = stack[GETARG_B(i)]
+				stack[i.A] = stack[i.B]
 
 			case TR_OP_LOADK:
-				stack[GETARG_A(i)] = k[GETARG_Bx(i)]
+				stack[i.A] = k[i.Get_Bx()]
 
 			case TR_OP_STRING:
-				stack[GETARG_A(i)] = TrString_new2(vm, block.strings.At(GETARG_Bx(i))
+				stack[i.A] = TrString_new2(vm, block.strings.At(i.Get_Bx())
 
 			case TR_OP_SELF:
-				stack[GETARG_A(i)] = f.self
+				stack[i.A] = f.self
 
 			case TR_OP_NIL:
-				stack[GETARG_A(i)] = TR_NIL
+				stack[i.A] = TR_NIL
 
 			case TR_OP_BOOL:
-				stack[GETARG_A(i)] = GETARG_B(i)
+				stack[i.A] = i.B
 
 			case TR_OP_NEWARRAY:
-				stack[GETARG_A(i)] = newArray3(vm, GETARG_B(i), &stack[GETARG_A(i) + 1])
+				stack[i.A] = newArray3(vm, i.B, &stack[i.A + 1])
 
 			case TR_OP_NEWHASH:
-				stack[GETARG_A(i)] = TrHash_new2(vm, GETARG_B(i), &stack[GETARG_A(i) + 1])
+				stack[i.A] = TrHash_new2(vm, i.B, &stack[i.A + 1])
 
 			case TR_OP_NEWRANGE:
-				stack[GETARG_A(i)] = TrRange_new(vm, stack[GETARG_A(i)], stack[GETARG_B(i)], GETARG_C(i))
+				stack[i.A] = TrRange_new(vm, stack[i.A], stack[i.B], i.C)
     
 			// return
 			case TR_OP_RETURN:
-				RETURN(stack[GETARG_A(i)])
+				return stack[i.A];
 
 			case TR_OP_THROW:
-				vm.throw_reason = GETARG_A(i)
-				vm.throw_value = stack[GETARG_B(i)]
-				RETURN(TR_UNDEF)
+				vm.throw_reason = i.A;
+				vm.throw_value = stack[i.B]
+				return TR_UNDEF;
 
 			case TR_OP_YIELD:
-				if OBJ(stack[GETARG_A(i)] = vm.yield(frame, GETARG_B(i), &stack[GETARG_A(i) + 1])) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(stack[i.A] = vm.yield(frame, i.B, &stack[i.A + 1])) == TR_UNDEF { return TR_UNDEF; }
     
     		// variable and consts
     		case TR_OP_SETUPVAL:
-				assert(upvals && upvals[GETARG_B(i)].value)
-				*(upvals[GETARG_B(i)].value) = stack[GETARG_A(i)]
+				assert(upvals && upvals[i.B].value)
+				*(upvals[i.B].value) = stack[i.A]
 
     		case TR_OP_GETUPVAL:
 				assert(upvals)
-				stack[GETARG_A(i)] = *(upvals[GETARG_B(i)].value)
+				stack[i.A] = *(upvals[i.B].value)
 
     		case TR_OP_SETIVAR:
-				TR_KH_SET(TR_COBJECT(frame.self).ivars, k[GETARG_Bx(i)], stack[GETARG_A(i)])
+				TR_KH_SET(TR_COBJECT(frame.self).ivars, k[i.Get_Bx()], stack[i.A])
 
     		case TR_OP_GETIVAR:
-				stack[GETARG_A(i)] = TR_KH_GET(TR_COBJECT(frame.self).ivars, k[GETARG_Bx(i)])
+				stack[i.A] = TR_KH_GET(TR_COBJECT(frame.self).ivars, k[i.Get_Bx()])
 
     		case TR_OP_SETCVAR:
-				TR_KH_SET(TR_COBJECT(frame.class).ivars, k[GETARG_Bx(i)], stack[GETARG_A(i)])
+				TR_KH_SET(TR_COBJECT(frame.class).ivars, k[i.Get_Bx()], stack[i.A])
 
     		case TR_OP_GETCVAR:
-				stack[GETARG_A(i)] = TR_KH_GET(TR_COBJECT(frame.class).ivars, k[GETARG_Bx(i)])
+				stack[i.A] = TR_KH_GET(TR_COBJECT(frame.class).ivars, k[i.Get_Bx()])
 
     		case TR_OP_SETCONST:
-				TrObject_const_set(vm, frame.self, k[GETARG_Bx(i)], stack[GETARG_A(i)])
+				TrObject_const_set(vm, frame.self, k[i.Get_Bx()], stack[i.A])
 
     		case TR_OP_GETCONST:
-				stack[GETARG_A(i)] = TrObject_const_get(vm, frame.self, k[GETARG_Bx(i)])
+				stack[i.A] = TrObject_const_get(vm, frame.self, k[i.Get_Bx()])
 
     		case TR_OP_SETGLOBAL:
-				TR_KH_SET(vm.globals, k[GETARG_Bx(i)], stack[GETARG_A(i)])
+				TR_KH_SET(vm.globals, k[i.Get_Bx()], stack[i.A])
 
     		case TR_OP_GETGLOBAL:
-				stack[GETARG_A(i)] = TR_KH_GET(vm.globals, k[GETARG_Bx(i)])
+				stack[i.A] = TR_KH_GET(vm.globals, k[i.Get_Bx()])
     
     		// method calling
     		case TR_OP_LOOKUP:
-				if OBJ(call = TrCallSite *(vm.lookup(block, stack[GETARG_A(i)], k[GETARG_Bx(i)], ip))) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(call = TrCallSite *(vm.lookup(block, stack[i.A], k[i.Get_Bx()], ip))) == TR_UNDEF { return TR_UNDEF; }
 
     		case TR_OP_CACHE:
 				// TODO how to expire cache?
-				assert(&block.sites.a[GETARG_C(i)] && "Method cached but no CallSite found");
-				if block.sites.a[GETARG_C(i)].class == TR_CLASS((stack[GETARG_A(i)])) {
-					call = &block.sites.a[GETARG_C(i)]
-					ip += GETARG_B(i)
+				assert(&block.sites.a[i.C] && "Method cached but no CallSite found");
+				if block.sites.a[i.C].class == TR_CLASS((stack[i.A])) {
+					call = &block.sites.a[i.C]
+					ip += i.B;
 				} else {
 					// TODO invalidate CallSite if too much miss.
-        			block.sites.a[GETARG_C(i)].miss++
+        			block.sites.a[i.C].miss++
 				}
 
 			case TR_OP_CALL:
 				Closure *cl = 0;
-				TrInst ci = i;
+				ci := i;
 
-				if GETARG_C(i) > 0 {
+				if i.C > 0 {
 					// Get upvalues using the pseudo-instructions following the CALL instruction.
 					//	Eg.: there's one upval to a local (x) to be passed:
 					//	call    0  0  0
 					//	move    0  0  0 ; this is not executed
 					//	return  0
 
-					cl = newClosure(vm, blocks[GETARG_C(i) - 1], frame.self, frame.class, frame.closure);
+					cl = newClosure(vm, blocks[i.C - 1], frame.self, frame.class, frame.closure);
 					size_t n, nupval = cl.block.upvals.Len();
 					for (n = 0; n < nupval; ++n) {
 						(i = *++ip)
-						if GET_OPCODE(i) == TR_OP_MOVE {
-							cl.upvals[n].value = &stack[GETARG_B(i)];
+						if i.OpCode == TR_OP_MOVE {
+							cl.upvals[n].value = &stack[i.B];
 						} else {
-							assert(GET_OPCODE(i) == TR_OP_GETUPVAL);
-							cl.upvals[n].value = upvals[GETARG_B(i)].value;
+							assert(i.OpCode == TR_OP_GETUPVAL);
+							cl.upvals[n].value = upvals[i.B].value;
 						}
 					}
 				}
-				argc := GETARG_B(ci) >> 1;
-				argv := &stack[GETARG_A(ci)+2];
+				argc := ci.B >> 1;
+				argv := &stack[ci.A + 2];
 				if call.method_missing {
 					argc++;
 					*(--argv) = call.message;
 				}
 				ret := call.method.call(vm,
-										stack[GETARG_A(ci)],		// receiver
+										stack[ci.A],		// receiver
 										argc, argv,
-										GETARG_B(ci) & 1,		// splat
+										ci.B & 1,		// splat
 										cl						// closure
 										);
 
@@ -329,12 +315,12 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 						case TR_THROW_EXCEPTION:
 							// TODO run rescue and stop propagation if rescued
 							// TODO run ensure block
-            				RETURN(TR_UNDEF)
+            				return TR_UNDEF;
 
 						case TR_THROW_RETURN:
 							// TODO run ensure block
-            				if frame.closure { RETURN(TR_UNDEF) }
-            				RETURN(vm.throw_value)
+            				if frame.closure { return TR_UNDEF; }
+            				return vm.throw_value;
 
 						case TR_THROW_BREAK:
 
@@ -342,78 +328,125 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 							assert(0 && "BUG: invalid throw_reason");
 					}
 				}
-      			stack[GETARG_A(ci)] = ret
+      			stack[ci.A] = ret
     
 			// definition
 			case TR_OP_DEF:
-				if OBJ(vm.defmethod(frame, k[GETARG_Bx(i)], blocks[GETARG_A(i)], 0, 0)) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(vm.defmethod(frame, k[i.Get_Bx()], blocks[i.A], 0, 0)) == TR_UNDEF { return TR_UNDEF; }
 
 			case TR_OP_METADEF:
-				if OBJ(vm.defmethod(frame, k[GETARG_Bx(i)], blocks[GETARG_A(i)], 1, stack[nA])) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(vm.defmethod(frame, k[i.Get_Bx()], blocks[i.A], 1, stack[(*(ip + 1)).A])) == TR_UNDEF { return TR_UNDEF; }
 				ip++
 
 			case TR_OP_CLASS:
-				if OBJ(vm.defclass(k[GETARG_Bx(i)], blocks[GETARG_A(i)], 0, stack[nA])) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(vm.defclass(k[i.Get_Bx()], blocks[i.A], 0, stack[(*(ip + 1)).A])) == TR_UNDEF { return TR_UNDEF; }
 				ip++
 
 			case TR_OP_MODULE:
-				if OBJ(vm.defclass(k[GETARG_Bx(i)], blocks[GETARG_A(i)], 1, 0)) == TR_UNDEF { RETURN(TR_UNDEF) }
+				if OBJ(vm.defclass(k[i.Get_Bx()], blocks[i.A], 1, 0)) == TR_UNDEF { return TR_UNDEF; }
     
 			// jumps
 			case TR_OP_JMP:
-				ip += GETARG_sBx(i);
+				ip += i.Get_sBx();
 
 			case TR_OP_JMPIF:
-				if TR_TEST(stack[GETARG_A(i)]) { ip += GETARG_sBx(i); }
+				if TR_TEST(stack[i.A]) { ip += i.Get_sBx(); }
 
 			case TR_OP_JMPUNLESS:
-				if !TR_TEST(stack[GETARG_A(i)]) { ip += GETARG_sBx(i); }
+				if !TR_TEST(stack[i.A]) { ip += i.Get_sBx(); }
 
     		// arithmetic optimizations
     		// TODO cache lookup in tr_send and force send if method was redefined
 			case TR_OP_ADD:
-				rb := RK(GETARG_B(i))
-				if TR_IS_FIX(rb) {
-					stack[GETARG_A(i)] = TR_INT2FIX(TR_FIX2INT(rb) + TR_FIX2INT(RK(GETARG_C(i))))
+				if i.B & (1 << (SIZE_B - 1) {
+					rb := k[i.B & ~0x100]
 				} else {
-					stack[GETARG_A(i)] = tr_send(rb, vm.sADD, RK(GETARG_C(i)))
+					rb := stack[i.B]
+				}
+
+				if i.C & (1 << (SIZE_B - 1) {
+					rc := k[i.C & ~0x100]
+				} else {
+					rc := stack[i.C]
+				}
+
+				if TR_IS_FIX(rb) {
+					stack[i.A] = TR_INT2FIX(TR_FIX2INT(rb) + TR_FIX2INT(rc))
+				} else {
+					stack[i.A] = tr_send(rb, vm.sADD, rc)
 				}
 
 			case TR_OP_SUB:
-				rb := RK(GETARG_B(i))
-				if TR_IS_FIX(rb) {
-					stack[GETARG_A(i)] = TR_INT2FIX(TR_FIX2INT(rb) - TR_FIX2INT(RK(GETARG_C(i))))
+				if i.B & (1 << (SIZE_B - 1) {
+					rb := k[i.B & ~0x100]
 				} else {
-					stack[GETARG_A(i)] = tr_send(rb, vm.sSUB, RK(GETARG_C(i)))
+					rb := stack[i.B]
+				}
+
+				if i.C & (1 << (SIZE_B - 1) {
+					rc := k[i.C & ~0x100]
+				} else {
+					rc := stack[i.C]
+				}
+
+				if TR_IS_FIX(rb) {
+					stack[i.A] = TR_INT2FIX(TR_FIX2INT(rb) - TR_FIX2INT(rc))
+				} else {
+					stack[i.A] = tr_send(rb, vm.sSUB, rc)
 				}
 
 			case TR_OP_LT:
-				rb := RK(GETARG_B(i))
-				if TR_IS_FIX(rb) {
-					stack[GETARG_A(i)] = TR_BOOL(TR_FIX2INT(rb) < TR_FIX2INT(RK(GETARG_C(i))))
+				if i.B & (1 << (SIZE_B - 1) {
+					rb := k[i.B & ~0x100]
 				} else {
-					stack[GETARG_A(i)] = tr_send(rb, vm.sLT, RK(GETARG_C(i)))
+					rb := stack[i.B]
+				}
+
+				if i.C & (1 << (SIZE_B - 1) {
+					rc := k[i.C & ~0x100]
+				} else {
+					rc := stack[i.C]
+				}
+
+				if TR_IS_FIX(rb) {
+					stack[i.A] = TR_BOOL(TR_FIX2INT(rb) < TR_FIX2INT(rc))
+				} else {
+					stack[i.A] = tr_send(rb, vm.sLT, rc)
 				}
 
 			case TR_OP_NEG:
-				rb := RK(GETARG_B(i))
-				if TR_IS_FIX(rb) {
-					stack[GETARG_A(i)] = TR_INT2FIX(-TR_FIX2INT(rb))
+				if i.B & (1 << (SIZE_B - 1) {
+					rb := k[i.B & ~0x100]
 				} else {
-					stack[GETARG_A(i)] = tr_send(rb, vm.sNEG, RK(GETARG_C(i)))
+					rb := stack[i.B]
+				}
+				if TR_IS_FIX(rb) {
+					stack[i.A] = TR_INT2FIX(-TR_FIX2INT(rb))
+				} else {
+					if i.C & (1 << (SIZE_B - 1) {
+						rc := k[i.C & ~0x100]
+					} else {
+						rc := stack[i.C]
+					}
+					stack[i.A] = tr_send(rb, vm.sNEG, rc)
 				}
 
 			case TR_OP_NOT:
-				rb := RK(GETARG_B(i))
-				stack[GETARG_A(i)] = TR_BOOL(!TR_TEST(rb))
+				if i.B & (1 << (SIZE_B - 1) {
+					rb := k[i.B & ~0x100]
+				} else {
+					rb := stack[i.B]
+				}
+				stack[i.A] = TR_BOOL(!TR_TEST(rb))
 
 			default:
 				// if there are unknown opcodes in the stream then halt the VM
 				// TODO: we need a better error message
-				fmt.Println("unknown opcode:", GET_OPCODE(i))
+				fmt.Println("unknown opcode:", i.OpCode)
 				os.Exit(1)
 		}
-		DISPATCH
+		i = *++ip;
+		break;
 	}
 }
 

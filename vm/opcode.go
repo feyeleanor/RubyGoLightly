@@ -1,46 +1,17 @@
-const SIZE_C = 9;
-const SIZE_B = 9;
-const SIZE_Bx = SIZE_C + SIZE_B;
-const SIZE_A = 8;
-const SIZE_OP = 6;
+package RubyVM
 
-const POS_OP = 0;
-const POS_A = POS_OP + SIZE_OP;
-const POS_C = POS_A + SIZE_A;
-const POS_B = POS_C + SIZE_C;
-const POS_Bx = POS_C;
-
-const MAXARG_Bx = (1 << SIZE_Bx) - 1;
-const MAXARG_sBx = MAXARG_Bx >> 1;			// `sBx' is signed
-
-// creates a mask with 'n' 1 bits at position `p'
-#define MASK1(n,p)  ((~((~(TrInst)0)<<n))<<p)
-
-// creates a mask with `n' 0 bits at position `p'
-#define MASK0(n,p)  (~MASK1(n,p))
-
-// the following macros help to manipulate instructions (TrInst)
-
-#define GET_OPCODE(i) ((int) ((i)>>POS_OP) & MASK1(SIZE_OP,0)))
-#define SET_OPCODE(i,o) ((i) = (((i)&MASK0(SIZE_OP,POS_OP)) | (((TrInst) o)<<POS_OP)&MASK1(SIZE_OP,POS_OP))))
-
-#define GETARG_A(i) ((int) ((i)>>POS_A) & MASK1(SIZE_A,0)))
-#define SETARG_A(i,u) ((i) = (((i)&MASK0(SIZE_A,POS_A)) | (((TrInst) u)<<POS_A)&MASK1(SIZE_A,POS_A))))
-
-#define GETARG_B(i) ((int) ((i)>>POS_B) & MASK1(SIZE_B,0)))
-#define SETARG_B(i,b) ((i) = (((i)&MASK0(SIZE_B,POS_B)) | (((TrInst) b)<<POS_B)&MASK1(SIZE_B,POS_B))))
-
-#define GETARG_C(i) ((int) ((i)>>POS_C) & MASK1(SIZE_C,0)))
-#define SETARG_C(i,b) ((i) = (((i)&MASK0(SIZE_C,POS_C)) | (((TrInst) b)<<POS_C)&MASK1(SIZE_C,POS_C))))
-
-#define GETARG_Bx(i)  ((int) ((i)>>POS_Bx) & MASK1(SIZE_Bx,0)))
-#define SETARG_Bx(i,b)  ((i) = (((i)&MASK0(SIZE_Bx,POS_Bx)) | (((TrInst) b)<<POS_Bx)&MASK1(SIZE_Bx,POS_Bx))))
-
-#define GETARG_sBx(i) ((int) GETARG_Bx(i)-MAXARG_sBx)
-#define SETARG_sBx(i,b) SETARG_Bx((i), ((unsigned int) (b) + MAXARG_sBx))
-
-#define CREATE_ABC(o,a,b,c) (((TrInst) o)<<POS_OP) | ((TrInst) a)<<POS_A) | ((TrInst) b)<<POS_B) | ((TrInst) c)<<POS_C))
-#define CREATE_ABx(o,a,bc)  (((TrInst) o)<<POS_OP) | ((TrInst) a)<<POS_A) | ((TrInst) bc)<<POS_Bx))
+const (
+	SIZE_B = 8;
+	SIZE_C = 8;
+	SIZE_Bx = SIZE_C + SIZE_B;
+	POS_OP = 0;
+	POS_A = POS_OP * 2;
+	POS_B = POS_C * 2;
+	POS_C = POS_A * 2;
+	POS_Bx = POS_C;
+	MAXARG_Bx = (1 << SIZE_Bx) - 1;
+	MAXARG_sBx = MAXARG_Bx >> 1;			// `sBx' is signed
+	)
 
 /*
 == TinyRb opcodes.
@@ -104,3 +75,25 @@ const OPCODE_NAMES = []string {
 	"newhash",		"yield",	"getivar",	"setivar",	"getcvar",		"setcvar",	"getglobal",	"setglobal",
 	"newrange",		"add",		"sub",		"lt",		"neg",			"not",		"super"
 }
+
+type MachineOP struct {
+	OpCode			byte;
+	A				byte;
+	B				byte;
+	C				byte;
+}
+
+func (self *MachineOP) Get_Bx() uint16 { return (uint16(self.B) << 8) & uint16(self.C) }
+func (self *MachineOP) Set_Bx(value unit16) {
+	self.B = byte(value >> 8);
+	self.C = byte(value);
+	}
+
+func (self *MachineOP) Get_sBx() int16 { return int16(self.Ge_tBx()); }
+func (self *MachineOP) Set_sBx(value int16) { return self.Set_Bx(uint16(value)); }
+
+func newExtendedOP(op, a byte, bc uint16) MachineOP {
+	m := MachineOP{OpCode: op, A: a};
+	m.Set_Bx(bc);
+	return m;
+	}
