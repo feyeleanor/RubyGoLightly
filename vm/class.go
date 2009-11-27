@@ -123,8 +123,8 @@ void TrClass_init(vm *RubyVM) {
 
 func newMetaClass(vm *RubyVM, super *RubyObject) RubyObject {
   *c = TR_CCLASS(super);
-  name := tr_sprintf(vm, "Class:%s", TR_STR_PTR(c.name));
-  name := tr_intern(TR_STR_PTR(name)); /* symbolize */
+  name := tr_sprintf(vm, "Class:%s", TR_CSTRING(c.name).ptr);
+  name := tr_intern(TR_CSTRING(name).ptr); /* symbolize */
   mc = newClass(vm, name, 0);
   mc.super = super;
   mc.meta = 1;
@@ -142,7 +142,7 @@ func (self *Method) arity(vm *RubyVM) RubyObject { return TR_INT2FIX(((Method *)
 
 func (self *Method) dump(vm *RubyVM) RubyObject {
 	Method *m = (Method *) self;
-	if (m.name) printf("<Method '%s':%p>\n", TR_STR_PTR(m.name), m);
+	if (m.name) printf("<Method '%s':%p>\n", TR_CSTRING(m.name).ptr, m);
 	if (m.data) {
 		(Block*)m.data.dump(vm);
 	} else {

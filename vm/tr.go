@@ -8,23 +8,21 @@
 #include <pcre.h>
 
 #include "config.h"
-#include "vendor/kvec.h"
 #include "vendor/khash.h"
 
 /* allocation macros */
 #define TR_REALLOC           GC_realloc
 
 /* type convertion macros */
-#define TR_TYPE(X)           Object_type(vm, (X))
-#define TR_CLASS(X)          (TR_IMMEDIATE(X) ? vm.classes[TR_TYPE(X)] : TR_COBJECT(X).class)
-#define TR_COBJECT(X)        ((Object*)(X))
-#define TR_TYPE_ERROR(T)     TR_THROW(EXCEPTION, TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " #T)))
+#define TR_CLASS(X)          (TR_IMMEDIATE(X) ? vm.classes[Object_type(vm, (X))] : Object *(X).class)
+#define TR_TYPE_ERROR(T) {	\
+	vm.throw_reason = TR_THROW_EXCEPTION; \
+	vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " #T)); \
+	return TR_UNDEF;	\
+}
+
 #define TR_CTYPE(X,T)        ((X.(T) ? 0 : TR_TYPE_ERROR(T)),(Tr##T*)(X))
 #define TR_CSTRING(X)        ((X.(String) || X.(Symbol) ? 0 : TR_TYPE_ERROR(T)),(TrString*)(X))
-
-/* string macros */
-#define TR_STR_PTR(S)        (TR_CSTRING(S).ptr)
-#define TR_STR_LEN(S)        (TR_CSTRING(S).len)
 
 /* raw hash macros */
 #define TR_KH_GET(KH,K) ({ \
@@ -49,19 +47,6 @@
 		} \
 	})
 
-/* throw macros */
-#define TR_THROW(R,V)        ({ \
-                               vm.throw_reason = TR_THROW_##R; \
-                               vm.throw_value = (V); \
-                               return TR_UNDEF; \
-                             })
-#define TR_HAS_EXCEPTION(R)  ((R) == TR_UNDEF && vm.throw_reason == TR_THROW_EXCEPTION)
-#define TR_FAILSAFE(R)       if (TR_HAS_EXCEPTION(R)) { \
-                               TrException_default_handler(vm, TR_EXCEPTION); \
-                               abort(); \
-                             }
-#define TR_EXCEPTION         (assert(vm.throw_reason == TR_THROW_EXCEPTION), vm.throw_value)
-
 /* immediate values macros */
 #define TR_IMMEDIATE(X)      (X==TR_NIL || X==TR_TRUE || X==TR_FALSE || X==TR_UNDEF || TR_IS_FIX(X))
 #define TR_IS_FIX(F)         ((F) & 1)
@@ -71,15 +56,19 @@
 #define TR_FALSE             OBJ(2)
 #define TR_TRUE              OBJ(4)
 #define TR_UNDEF             OBJ(6)
-#define TR_TEST(X)           ((X) == TR_NIL || (X) == TR_FALSE ? 0 : 1)
 
 /* API macros */
-#define tr_getivar(O,N)      TR_KH_GET(TR_COBJECT(O).ivars, tr_intern(N))
-#define tr_setivar(O,N,V)    TR_KH_SET(TR_COBJECT(O).ivars, tr_intern(N), V)
+#define tr_getivar(O,N)      TR_KH_GET(Object*(O).ivars, tr_intern(N))
+#define tr_setivar(O,N,V)    TR_KH_SET(Object*(O).ivars, tr_intern(N), V)
 #define tr_getglobal(N)      TR_KH_GET(vm.globals, tr_intern(N))
 #define tr_setglobal(N,V)    TR_KH_SET(vm.globals, tr_intern(N), V)
 #define tr_intern(S)         TrSymbol_new(vm, (S))
-#define tr_raise(T,M,...)    TR_THROW(EXCEPTION, TrException_new(vm, vm.c##T, tr_sprintf(vm, (M), ##__VA_ARGS__)))
+#define tr_raise(T,M,...)    {	\
+	vm.throw_reason = TR_THROW_EXCEPTION; \
+	vm.throw_value = TrException_new(vm, vm.c##T, tr_sprintf(vm, (M), ##__VA_ARGS__)); \
+	return TR_UNDEF; \
+}
+
 #define tr_raise_errno(M)    tr_raise(SystemCallError, "%s: %s", strerror(errno), (M))
 #define tr_def(C,N,F,A)      (C).add_method(vm, tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
 #define tr_metadef(O,N,F,A)  Object_add_singleton_method(vm, (O), tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
@@ -190,7 +179,10 @@ func main(argc int, argv *[]char) {
 	while((opt = getopt(argc, argv, "e:vdh")) != -1) {
 		switch(opt) {
 			case 'e':
-				TR_FAILSAFE(vm.eval(optarg, "<eval>"));
+				if vm.eval(optarg, "<eval>") == TR_UNDEF && vm.throw_reason == TR_THROW_EXCEPTION {
+					TrException_default_handler(vm, vm.throw_value));
+					abort();
+				}
 				return 0;
 			case 'v':
 				fmt.println("tinyrb %s", TR_VERSION);
@@ -208,7 +200,10 @@ func main(argc int, argv *[]char) {
 	argv += optind;
   
 	if (argc > 0) {
-		TR_FAILSAFE(vm.load(argv[argc - 1]));
+		if vm.load(argv[argc - 1])) == TR_UNDEF && vm.throw_reason == TR_THROW_EXCEPTION {
+			TrException_default_handler(vm, vm.throw_value));
+			abort();
+		}
 		return 0;
 	}
 	return usage();

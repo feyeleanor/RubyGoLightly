@@ -79,7 +79,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 			b.code.Push(newExtendedOP(TR_OP_LOADK, reg, b.push_value(self.args[0])));
 
 		case NODE_STRING: {
-			b.code.Push(newExtendedOP(TR_OP_STRING, reg, b.push_string(TR_STR_PTR(self.args[0]))));
+			b.code.Push(newExtendedOP(TR_OP_STRING, reg, b.push_string(TR_CSTRING(self.args[0]).ptr)));
 
 		case NODE_ARRAY:
 			size := 0;
@@ -479,7 +479,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 			}
 
 		default:
-			printf("Compiler: unknown node type: %d in %s:%lu\n", self.ntype, TR_STR_PTR(b.filename), b.line);
+			printf("Compiler: unknown node type: %d in %s:%lu\n", self.ntype, TR_CSTRING(b.filename).ptr, b.line);
 			if vm.debug { assert(0); }
 	}
 	return TR_NIL;

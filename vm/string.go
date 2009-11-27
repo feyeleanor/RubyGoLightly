@@ -40,7 +40,7 @@ func TrSymbol_new(vm *RubyVM, str *string) RubyObject {
 }
 
 func TrSymbol_to_s(vm *RubyVM, self *RubyObject) RubyObject {
-	return TrString_new(vm, TR_STR_PTR(self), TR_STR_LEN(self));
+	return TrString_new(vm, TR_CSTRING(self).ptr, TR_CSTRING(self).len);
 }
 
 func TrSymbol_init(vm *RubyVM) {
@@ -76,7 +76,7 @@ func TrString_new3(vm *RubyVM, len size_t) RubyObject {
 }
 
 func TrString_add(vm *RubyVM, self, other *RubyObject) RubyObject {
-	return tr_sprintf(vm, "%s%s", TR_STR_PTR(self), TR_STR_PTR(other));
+	return tr_sprintf(vm, "%s%s", TR_CSTRING(self).ptr, TR_CSTRING(other).ptr);
 }
 
 func TrString_push(vm *RubyVM, self, other *RubyObject) RubyObject {
@@ -92,25 +92,25 @@ func TrString_push(vm *RubyVM, self, other *RubyObject) RubyObject {
 }
 
 func TrString_replace(vm *RubyVM, self, other *RubyObject) RubyObject {
-	TR_STR_PTR(self) = TR_STR_PTR(other);
-	TR_STR_LEN(self) = TR_STR_LEN(other);
+	TR_CSTRING(self).ptr = TR_CSTRING(other).ptr;
+	TR_CSTRING(self).len = TR_CSTRING(other).len;
 	return self;
 }
 
 func TrString_cmp(vm *RubyVM, self, other *RubyObject) RubyObject {
 	if (!other.(String)) return TR_INT2FIX(-1);
-	return TR_INT2FIX(strcmp(TR_STR_PTR(self), TR_STR_PTR(other)));
+	return TR_INT2FIX(strcmp(TR_CSTRING(self).ptr, TR_CSTRING(other).ptr));
 }
 
 func TrString_substring(vm *RubyVM, self, start, len *RubyObject) RubyObject {
 	int s = TR_FIX2INT(start);
 	int l = TR_FIX2INT(len);
-	if (s < 0 || (s+l) > (int)TR_STR_LEN(self)) return TR_NIL;
-	return TrString_new(vm, TR_STR_PTR(self)+s, l);
+	if (s < 0 || (s+l) > (int)TR_CSTRING(self).len) return TR_NIL;
+	return TrString_new(vm, TR_CSTRING(self).ptr + s, l);
 }
 
 func TrString_to_sym(vm *RubyVM, self *RubyObject) RubyObject {
-	return tr_intern(TR_STR_PTR(self));
+	return tr_intern(TR_CSTRING(self).ptr);
 }
 
 // Uses variadic ... parameter which replaces the mechanism used by stdarg.h

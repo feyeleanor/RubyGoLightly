@@ -244,16 +244,16 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				stack[i.A] = *(upvals[i.B].value)
 
     		case TR_OP_SETIVAR:
-				TR_KH_SET(TR_COBJECT(frame.self).ivars, k[i.Get_Bx()], stack[i.A])
+				TR_KH_SET(Object *(frame.self).ivars, k[i.Get_Bx()], stack[i.A])
 
     		case TR_OP_GETIVAR:
-				stack[i.A] = TR_KH_GET(TR_COBJECT(frame.self).ivars, k[i.Get_Bx()])
+				stack[i.A] = TR_KH_GET(Object *(frame.self).ivars, k[i.Get_Bx()])
 
     		case TR_OP_SETCVAR:
-				TR_KH_SET(TR_COBJECT(frame.class).ivars, k[i.Get_Bx()], stack[i.A])
+				TR_KH_SET(Object *(frame.class).ivars, k[i.Get_Bx()], stack[i.A])
 
     		case TR_OP_GETCVAR:
-				stack[i.A] = TR_KH_GET(TR_COBJECT(frame.class).ivars, k[i.Get_Bx()])
+				stack[i.A] = TR_KH_GET(Object*(frame.class).ivars, k[i.Get_Bx()])
 
     		case TR_OP_SETCONST:
 				Object_const_set(vm, frame.self, k[i.Get_Bx()], stack[i.A])
@@ -364,10 +364,10 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				ip += i.Get_sBx();
 
 			case TR_OP_JMPIF:
-				if TR_TEST(stack[i.A]) { ip += i.Get_sBx(); }
+				if !(stack[i.A] == TR_NIL || stack[i.A] == TR_FALSE) { ip += i.Get_sBx(); }
 
 			case TR_OP_JMPUNLESS:
-				if !TR_TEST(stack[i.A]) { ip += i.Get_sBx(); }
+ 				if stack[i.A] == TR_NIL || stack[i.A] == TR_FALSE { ip += i.Get_sBx(); }
 
     		// arithmetic optimizations
     		// TODO cache lookup in tr_send and force send if method was redefined
@@ -456,10 +456,11 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				} else {
 					rb := stack[i.B];
 				}
-				if TR_TEST(rb) {
-					stack[i.A] = TR_FALSE;
-				} else {
+
+				if rb == TR_NIL || rb == TR_FALSE {
 					stack[i.A] = TR_TRUE;
+				} else {
+					stack[i.A] = TR_FALSE;
 				}
 
 			default:
@@ -481,12 +482,12 @@ func (vm *RubyVM) backtrace() RubyObject {
 		frame := vm.frame.previous;
 		while (frame) {
 			if frame.filename {
-				filename := TR_STR_PTR(f.filename);
+				filename := TR_CSTRING(f.filename).ptr;
 			} else {
 				filename := "?"
 			}
 			if frame.method {
-				context := tr_sprintf(vm, "\tfrom %s:%lu:in `%s'", filename, f.line, TR_STR_PTR(((Method *)f.method).name));
+				context := tr_sprintf(vm, "\tfrom %s:%lu:in `%s'", filename, f.line, TR_CSTRING(Method *(f.method).name).ptr);
 			} else {
 				context := tr_sprintf(vm, "\tfrom %s:%lu", filename, f.line);
 			}
@@ -555,7 +556,7 @@ func newRubyVM() *RubyVM {
 	objectc.class = newMetaClass(vm, objectc.class);
   
  	// Some symbols are created before Object, so make sure all have proper class.
-	TR_KH_EACH(vm.symbols, i, sym, { TR_COBJECT(sym).class = RubyObject(symbolc); });
+	TR_KH_EACH(vm.symbols, i, sym, { Object*(sym).class = RubyObject(symbolc); });
   
 	// bootstrap rest of core classes, order is no longer important here
 	Object_init(vm);
@@ -580,6 +581,9 @@ func newRubyVM() *RubyVM {
 	vm.sNEG = tr_intern("@-");
 	vm.sNOT = tr_intern("!");
   
-	TR_FAILSAFE(vm.load("lib/boot.rb"));
+	if vm.load("lb/boot.rb") == TR_UNDEF && vm.throw_reason == TR_THROW_EXCEPTION {
+		TrException_default_handler(vm, vm.throw_value));
+        abort();
+	}
 	return vm;
 }

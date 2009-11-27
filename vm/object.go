@@ -21,7 +21,7 @@ func Object_type(vm *RubyVM, obj *RubyObject) int {
 		case TR_FALSE: return TR_T_FalseClass;
 	}
 	if TR_IS_FIX(obj) { return TR_T_Fixnum }
-	return TR_COBJECT(obj).type;
+	return Object *(obj).type;
 }
 
 func Object_method(vm *RubyVM, self, name *RubyObject) RubyObject {
@@ -30,7 +30,7 @@ func Object_method(vm *RubyVM, self, name *RubyObject) RubyObject {
 
 func Object_method_missing(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
 	assert(argc > 0);
-	tr_raise(NoMethodError, "Method not found: `%s'", TR_STR_PTR(argv[0]));
+	tr_raise(NoMethodError, "Method not found: `%s'", TR_CSTRING(argv[0]).ptr);
 }
 
 func Object_send(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
@@ -60,7 +60,7 @@ func Object_const_set(vm *RubyVM, self, name, value *RubyObject) RubyObject {
 }
 
 func Object_add_singleton_method(vm *RubyVM, self, name, method *RubyObject) RubyObject {
-	object := *TR_COBJECT(self);
+	object := Object *(self);
 	if (!TR_CCLASS(object.class).meta) { object.class := newMetaClass(vm, object.class); }
 	assert(TR_CCLASS(object.class).meta && "first class must be the metaclass");
 	object.class.add_method(vm, name, method);
@@ -80,15 +80,15 @@ func Object_object_id(vm *RubyVM, self *RubyObject) RubyObject {
 }
 
 func Object_instance_eval(vm *RubyVM, self, code *RubyObject) RubyObject {
-	if block := Block_compile(vm, TR_STR_PTR(code), "<eval>", 0) {
-		return vm.run(block, self, TR_COBJECT(self).class, nil);
+	if block := Block_compile(vm, TR_CSTRING(code).ptr, "<eval>", 0) {
+		return vm.run(block, self, Object *(self).class, nil);
 	} else {
 		return TR_UNDEF;
 	}
 }
 
 func Object_inspect(vm *RubyVM, self *RubyObject) RubyObject {
-	name := TR_STR_PTR(tr_send2(tr_send2(self, "class"), "name"));
+	name := TR_CSTRING(tr_send2(tr_send2(self, "class"), "name")).ptr;
 	return tr_sprintf(vm, "#<%s:%p>", name, (void*)self);
 }
 

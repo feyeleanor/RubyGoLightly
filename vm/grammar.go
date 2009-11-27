@@ -291,7 +291,7 @@ SEP       = ( - Comment? (EOL | ';') )+
 /* Raise a syntax error. */
 RubyObject yyerror() {
   vm := RubyVM *(yyvm);
-  msg := tr_sprintf(vm, "SyntaxError in %s at line %d", TR_STR_PTR(compiler.filename), compiler.line);
+  msg := tr_sprintf(vm, "SyntaxError in %s at line %d", TR_CSTRING(compiler.filename).ptr, compiler.line);
   /* Stupid ugly code, just to build a string... I suck... */
   if (yytext[0]) TrString_push(vm, msg, tr_sprintf(vm, " near token '%s'", yytext));
   if (yypos < yylimit) {
@@ -305,7 +305,7 @@ RubyObject yyerror() {
     TrString_push(vm, msg, tr_sprintf(vm, "\""));
   }
   /* TODO msg should not be a String object */
-  tr_raise(SyntaxError, TR_STR_PTR(msg));
+  tr_raise(SyntaxError, TR_CSTRING(msg).ptr);
 }
 
 /* Compiles code to a Block.

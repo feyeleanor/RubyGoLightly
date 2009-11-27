@@ -12,7 +12,7 @@ void TrBinding_init(vm *RubyVM) {
 }
 
 func TrKernel_puts(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
-	for object := range argv { fmt.println("%s", TR_STR_PTR(tr_send2(object, "to_s"))); }
+	for object := range argv { fmt.println("%s", TR_CSTRING(tr_send2(object, "to_s")).ptr); }
 	return TR_NIL;
 }
 
@@ -30,7 +30,7 @@ func TrKernel_eval(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) Ru
 		frame := vm.frame;
 	}
 	if argc > 2 && argv[1] {
-		filename := TR_STR_PTR(argv[2]);
+		filename := TR_CSTRING(argv[2]).ptr;
 	} else {
 		filename := "<eval>";
 	}
@@ -39,14 +39,14 @@ func TrKernel_eval(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) Ru
 	} else {
 		lineno := 0;
 	}
-	blk := Block_compile(vm, TR_STR_PTR(code_string), filename, lineno);
+	blk := Block_compile(vm, TR_CSTRING(code_string).ptr, filename, lineno);
 	if !blk { return TR_UNDEF }
 	if vm.debug { blk.dump(vm) }
 	return vm.run(blk, frame.self, frame.class, frame.stack[0:blk.locals.Len() - 1]);
 }
 
 func TrKernel_load(vm *RubyVM, self, filename *RubyObject) RubyObject {
-	return vm.load(TR_STR_PTR(filename));
+	return vm.load(TR_CSTRING(filename).ptr);
 }
 
 func TrKernel_raise(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
@@ -69,7 +69,9 @@ func TrKernel_raise(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) R
 			tr_raise(ArgumentError, "wrong number of arguments (%d for 2)", argc);
 	}
 	TrException_set_backtrace(vm, e, vm.backtrace());
-	TR_THROW(EXCEPTION, e);
+	vm.throw_reason = TR_THROW_EXCEPTION;
+	vm.throw_value = e;
+	return TR_UNDEF;
 }
 
 void TrKernel_init(vm *RubyVM) {

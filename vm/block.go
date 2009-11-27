@@ -42,7 +42,7 @@ func newBlock(compiler *Compiler, parent *Block) *Block {
 	return block;
 }
 
-#define INSPECT_K(K)  (K.(Symbol) ? TR_STR_PTR(K) : (sprintf(buf, "%d", TR_FIX2INT(K)), buf))
+#define INSPECT_K(K)  (K.(Symbol) ? TR_CSTRING(K).ptr : (sprintf(buf, "%d", TR_FIX2INT(K)), buf))
 
 func (b *Block) dump2(vm *RubyVM, level int) RubyObject {
 	char buf[10];

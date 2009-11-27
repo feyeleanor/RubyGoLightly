@@ -65,9 +65,9 @@ func TrException_default_handler(vm *RubyVM, exception *RubyObject) RubyObject {
   msg := tr_getivar(exception, "@message");
   backtrace := tr_getivar(exception, "@backtrace");
   
-  printf("%s: %s\n", TR_STR_PTR(c.name), TR_STR_PTR(msg));
+  printf("%s: %s\n", TR_CSTRING(c.name).ptr, TR_CSTRING(msg).ptr);
   if backtrace {
-	for item := range backtrace.Iter() { println(TR_STR_PTR(item)); }
+	for item := range backtrace.Iter() { println(TR_CSTRING(item).ptr); }
   }
   vm.destroy();
   exit(1);
