@@ -42,9 +42,7 @@ func newBlock(compiler *Compiler, parent *Block) *Block {
 	return block;
 }
 
-#define INSPECT_K(K)  (K.(Symbol) ? TR_CSTRING(K).ptr : (sprintf(buf, "%d", TR_FIX2INT(K)), buf))
-
-func (b *Block) dump2(vm *RubyVM, level int) RubyObject {
+func (b *Block) dump(vm *RubyVM, level int) RubyObject {
 	char buf[10];
   
 	size_t i;
@@ -58,33 +56,108 @@ func (b *Block) dump2(vm *RubyVM, level int) RubyObject {
 		for (i = 0; i < b.defaults.Len; ++i) fmt.Printf("%d ", b.defaults.At(i));
 		fmt.Println();
 	}
-	for (i = 0; i < b.locals.Len(); ++i) { fmt.Println(".local  %-8s ; %lu", INSPECT_K(b.locals.At(i)), i); }
-	for (i = 0; i < b.upvals.Len(); ++i) { fmt.Println(".upval  %-8s ; %lu", INSPECT_K(b.upvals.At(i)), i); }
-	for (i = 0; i < b.k.Len(); ++i) { fmt.Println(".value  %-8s ; %lu", INSPECT_K(b.k.At(i)), i); }
-	for (i = 0; i < b.strings.Len; ++i) { fmt.Println(".string %-8s ; %lu", b.strings.At(i), i); }
+	for (i = 0; i < b.locals.Len(); ++i) {
+		local := b.locals.At(i);
+		if local.(Symbol) {
+			local := local.ptr;
+		} else {
+			sprintf(buf, "%d", TR_FIX2INT(local));
+			local := buf;
+		}
+		fmt.Println(".local  %-8s ; %lu", local, i);
+	}
+	for (i = 0; i < b.upvals.Len(); ++i) {
+		upval := b.upvals.At(i);
+		if upval.(Symbol) {
+			upval := upval.ptr;
+		} else {
+			sprintf(buf, "%d", TR_FIX2INT(upval));
+			upval := buf;
+		}
+		fmt.Println(".upval  %-8s ; %lu", upval, i);
+	}
+	for (i = 0; i < b.k.Len(); ++i) {
+		k := b.k.At(i);
+		if k.(Symbol) {
+			k := k.ptr;
+		} else {
+			sprintf(buf, "%d", TR_FIX2INT(k));
+			k := buf;
+		}
+		fmt.Println(".value  %-8s ; %lu",k, i);
+	}
+	for (i = 0; i < b.strings.Len; ++i) {
+		fmt.Println(".string %-8s ; %lu", b.strings.At(i), i);
+	}
 	for (i = 0; i < b.code.Len(); ++i) {
 		op := b.code.At(i);
 		fmt.printf("[%03lu] %-10s %3d %3d %3d", i, OPCODE_NAMES[op.OpCode], op.A, op.B, op.C);
 		switch (op.OpCode) {
-			case TR_OP_LOADK:    fmt.Printf(" ; R[%d] = %s", op.A, INSPECT_K(b.k.At(op.Get_Bx())));
-			case TR_OP_STRING:   fmt.Printf(" ; R[%d] = \"%s\"", op.A, b.strings.At(op.Get_Bx()));
-			case TR_OP_LOOKUP:   fmt.Printf(" ; R[%d] = R[%d].method(:%s)", op.A + 1, op.A, INSPECT_K(b.k.At(op.Get_Bx())));
-			case TR_OP_CALL:     fmt.Printf(" ; R[%d] = R[%d].R[%d](%d)", op.A, op.A, op.A + 1, op.B >> 1);
-			case TR_OP_SETUPVAL: fmt.Printf(" ; %s = R[%d]", INSPECT_K(b.upvals.At(op.B)), op.A);
-			case TR_OP_GETUPVAL: fmt.Printf(" ; R[%d] = %s", op.A, INSPECT_K(b.upvals.At(op.B)));
-			case TR_OP_JMP:      fmt.Printf(" ; %d", op.Get_sBx());
-			case TR_OP_DEF:      fmt.Printf(" ; %s => %p", INSPECT_K(b.k.At(op.Get_Bx())), b.blocks.At(op.A));
+			case TR_OP_LOADK:
+				k := b.k.At(op.Get_Bx());
+				if k.(Symbol) {
+					k := k.ptr;
+				} else {
+					sprintf(buf, "%d", TR_FIX2INT(k));
+					k := buf;
+				}
+				fmt.Printf(" ; R[%d] = %s", op.A, k);
+
+			case TR_OP_STRING:
+				fmt.Printf(" ; R[%d] = \"%s\"", op.A, b.strings.At(op.Get_Bx()));
+
+			case TR_OP_LOOKUP:
+				k := b.l.At(op.Get_Bx());
+				if k.(Symbol) {
+					k := k.ptr;
+				} else {
+					sprintf(buf, "%d", TR_FIX2INT(k));
+					k := buf;
+				}
+				fmt.Printf(" ; R[%d] = R[%d].method(:%s)", op.A + 1, op.A, k);
+
+			case TR_OP_CALL:
+				fmt.Printf(" ; R[%d] = R[%d].R[%d](%d)", op.A, op.A, op.A + 1, op.B >> 1);
+
+			case TR_OP_SETUPVAL:
+				upval := b.upvals.At(op.B);
+				if upval.(Symbol) {
+					upval := upval.ptr;
+				} else {
+					sprintf(buf, "%d", TR_FIX2INT(upval));
+					upval := buf;
+				}
+				fmt.Printf(" ; %s = R[%d]", upval, op.A);
+
+			case TR_OP_GETUPVAL:
+				upval := b.upvals.At(op.B);
+				if upval.(Symbol) {
+					upval := upval.ptr;
+				} else {
+					sprintf(buf, "%d", TR_FIX2INT(upval));
+					upval := buf;
+				}
+				fmt.Printf(" ; R[%d] = %s", op.A, upval);
+
+			case TR_OP_JMP:
+				fmt.Printf(" ; %d", op.Get_sBx());
+
+			case TR_OP_DEF:
+				k := b.k.At(op.Get_Bx());
+				if k.(Symbol) {
+					k := k.ptr;
+				} else {
+					sprintf(buf, "%d", TR_FIX2INT(k));
+					k := buf;
+				}
+				fmt.Printf(" ; %s => %p", k, b.blocks.At(op.A));
 		}
 		fmt.Println();
 	}
 	fmt.Println("; block end\n");
 
-	for (i = 0; i < b.blocks.Len(); ++i) { b.blocks.At(i).dump2(vm, level+1); }
+	for (i = 0; i < b.blocks.Len(); ++i) { b.blocks.At(i).dump(vm, level+1); }
 	return TR_NIL;
-}
-
-func (b *Block) dump(vm *RubyVM) {
-	b.dump2(vm, 0);
 }
 
 func (block *Block) push_value(k *RubyObject) int {

@@ -2,25 +2,17 @@
 
    Copyright (c) 2008, by Attractive Chaos <attractivechaos@aol.co.uk>
 
-   Permission is hereby granted, free of charge, to any person obtaining
-   a copy of this software and associated documentation files (the
-   "Software"), to deal in the Software without restriction, including
-   without limitation the rights to use, copy, modify, merge, publish,
-   distribute, sublicense, and/or sell copies of the Software, and to
-   permit persons to whom the Software is furnished to do so, subject to
+   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the
+   "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish,
+   distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to
    the following conditions:
 
-   The above copyright notice and this permission notice shall be
-   included in all copies or substantial portions of the Software.
+   The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
-   BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-   ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+   BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 /*
@@ -45,38 +37,6 @@ int main() {
 	return 0;
 }
 */
-
-/*
-  2008-09-19 (0.2.3):
-
-	* Corrected the example
-	* Improved interfaces
-
-  2008-09-11 (0.2.2):
-
-	* Improved speed a little in kh_put()
-
-  2008-09-10 (0.2.1):
-
-	* Added kh_clear()
-	* Fixed a compiling error
-
-  2008-09-02 (0.2.0):
-
-	* Changed to token concatenation which increases flexibility.
-
-  2008-08-31 (0.1.2):
-
-	* Fixed a bug in kh_get(), which has not been tested previously.
-
-  2008-08-31 (0.1.1):
-
-	* Added destructor
-*/
-
-
-#ifndef __AC_KHASH_H
-#define __AC_KHASH_H
 
 #define AC_VERSION_KHASH_H "0.2.2"
 
@@ -302,5 +262,3 @@ type kh_cstr_t *string;
 
 #define KHASH_MAP_INIT_STR(name, khval_t)								\
 	KHASH_INIT(name, kh_cstr_t, khval_t, 1, kh_str_hash_func, kh_str_hash_equal)
-
-#endif /* __AC_KHASH_H */

@@ -4,13 +4,6 @@ const (
 	SIZE_B = 8;
 	SIZE_C = 8;
 	SIZE_Bx = SIZE_C + SIZE_B;
-	POS_OP = 0;
-	POS_A = POS_OP * 2;
-	POS_B = POS_C * 2;
-	POS_C = POS_A * 2;
-	POS_Bx = POS_C;
-	MAXARG_Bx = (1 << SIZE_Bx) - 1;
-	MAXARG_sBx = MAXARG_Bx >> 1;			// `sBx' is signed
 	)
 
 /*

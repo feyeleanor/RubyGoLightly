@@ -79,7 +79,12 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 			b.code.Push(newExtendedOP(TR_OP_LOADK, reg, b.push_value(self.args[0])));
 
 		case NODE_STRING: {
-			b.code.Push(newExtendedOP(TR_OP_STRING, reg, b.push_string(TR_CSTRING(self.args[0]).ptr)));
+			if !self.args[0].(String) && !self.args[0].(Symbol) {
+				vm.throw_reason = TR_THROW_EXCEPTION;
+				vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self.args[0]));
+				return TR_UNDEF;
+			}
+			b.code.Push(newExtendedOP(TR_OP_STRING, reg, b.push_string(self.args[0].ptr));
 
 		case NODE_ARRAY:
 			size := 0;
@@ -479,7 +484,12 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 			}
 
 		default:
-			printf("Compiler: unknown node type: %d in %s:%lu\n", self.ntype, TR_CSTRING(b.filename).ptr, b.line);
+			if !b.filename.(String) && !b.filename.(Symbol) {
+				vm.throw_reason = TR_THROW_EXCEPTION;
+				vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + b.filename));
+				return TR_UNDEF;
+			}
+			printf("Compiler: unknown node type: %d in %s:%lu\n", self.ntype, b.filename.ptr, b.line);
 			if vm.debug { assert(0); }
 	}
 	return TR_NIL;

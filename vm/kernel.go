@@ -7,12 +7,18 @@ func TrBinding_new(vm *RubyVM, frame *Frame) RubyObject {
 	return Binding{type: TR_T_Binding, class: vm.classes[TR_T_Binding], ivars: kh_init(RubyObject), frame: frame};
 }
 
-void TrBinding_init(vm *RubyVM) {
+func TrBinding_init(vm *RubyVM) {
 	vm.classes[TR_T_Binding] = Object_const_set(vm, vm.self, tr_intern(Binding), newClass(vm, tr_intern(Binding), vm.classes[TR_T_Object]));
 }
 
 func TrKernel_puts(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
-	for object := range argv { fmt.println("%s", TR_CSTRING(tr_send2(object, "to_s")).ptr); }
+	object_as_string := tr_send2(object, "to_s");
+	if !object_as_string.(String) && !object_as_string.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + object_as_string));
+		return TR_UNDEF;
+	}
+	for object := range argv { fmt.println("%s", object_as_string.ptr); }
 	return TR_NIL;
 }
 
@@ -25,12 +31,22 @@ func TrKernel_eval(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) Ru
 	if argc > 4 { tr_raise(ArgumentError, "Too much arguments") }
 	code_string := argv[0];
 	if argc > 1 && argv[1] {
-		frame := TR_CTYPE(argv[1], Binding);
+		if !argv[1].(Binding) {
+			vm.throw_reason = TR_THROW_EXCEPTION;
+			vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected Binding"));
+			return TR_UNDEF;
+		}
+		frame := TrBinding *(argv[1]);
 	} else {
 		frame := vm.frame;
 	}
 	if argc > 2 && argv[1] {
-		filename := TR_CSTRING(argv[2]).ptr;
+		if !argv[2].(String) && !argv[2].(Symbol) {
+			vm.throw_reason = TR_THROW_EXCEPTION;
+			vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + argv[2]));
+			return TR_UNDEF;
+		}		
+		filename := argv[2].ptr;
 	} else {
 		filename := "<eval>";
 	}
@@ -39,14 +55,24 @@ func TrKernel_eval(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) Ru
 	} else {
 		lineno := 0;
 	}
-	blk := Block_compile(vm, TR_CSTRING(code_string).ptr, filename, lineno);
+	if !code_string.(String) && !code_string.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + code_string));
+		return TR_UNDEF;
+	}
+	blk := Block_compile(vm, code_string.ptr, filename, lineno);
 	if !blk { return TR_UNDEF }
-	if vm.debug { blk.dump(vm) }
+	if vm.debug { blk.dump2(vm, 0) }
 	return vm.run(blk, frame.self, frame.class, frame.stack[0:blk.locals.Len() - 1]);
 }
 
 func TrKernel_load(vm *RubyVM, self, filename *RubyObject) RubyObject {
-	return vm.load(TR_CSTRING(filename).ptr);
+	if !filename.(String) && !filename.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + filename));
+		return TR_UNDEF;
+	}
+	return vm.load(filename.ptr);
 }
 
 func TrKernel_raise(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
@@ -74,12 +100,12 @@ func TrKernel_raise(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) R
 	return TR_UNDEF;
 }
 
-void TrKernel_init(vm *RubyVM) {
-  m := tr_defmodule("Kernel");
-  vm.classes[TR_T_Object].include(vm, m);
-  tr_def(m, "puts", TrKernel_puts, -1);
-  tr_def(m, "eval", TrKernel_eval, -1);
-  tr_def(m, "load", TrKernel_load, 1);
-  tr_def(m, "binding", TrKernel_binding, 0);
-  tr_def(m, "raise", TrKernel_raise, -1);
+func TrKernel_init(vm *RubyVM) {
+	m := tr_defmodule("Kernel");
+	vm.classes[TR_T_Object].include(vm, m);
+	tr_def(m, "puts", TrKernel_puts, -1);
+	tr_def(m, "eval", TrKernel_eval, -1);
+	tr_def(m, "load", TrKernel_load, 1);
+	tr_def(m, "binding", TrKernel_binding, 0);
+	tr_def(m, "raise", TrKernel_raise, -1);
 }

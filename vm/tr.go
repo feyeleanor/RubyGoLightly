@@ -7,22 +7,18 @@
 #include <gc.h>
 #include <pcre.h>
 
-#include "config.h"
-#include "vendor/khash.h"
+import(
+	"config";
+	"vendor/khash";
+)
+
+const (
+	TR_VERSION		"0.0";
+	TR_MAX_FRAMES	255;
+)
 
 /* allocation macros */
 #define TR_REALLOC           GC_realloc
-
-/* type convertion macros */
-#define TR_CLASS(X)          (TR_IMMEDIATE(X) ? vm.classes[Object_type(vm, (X))] : Object *(X).class)
-#define TR_TYPE_ERROR(T) {	\
-	vm.throw_reason = TR_THROW_EXCEPTION; \
-	vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " #T)); \
-	return TR_UNDEF;	\
-}
-
-#define TR_CTYPE(X,T)        ((X.(T) ? 0 : TR_TYPE_ERROR(T)),(Tr##T*)(X))
-#define TR_CSTRING(X)        ((X.(String) || X.(Symbol) ? 0 : TR_TYPE_ERROR(T)),(TrString*)(X))
 
 /* raw hash macros */
 #define TR_KH_GET(KH,K) ({ \

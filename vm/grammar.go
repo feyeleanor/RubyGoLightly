@@ -290,22 +290,32 @@ SEP       = ( - Comment? (EOL | ';') )+
 
 /* Raise a syntax error. */
 RubyObject yyerror() {
-  vm := RubyVM *(yyvm);
-  msg := tr_sprintf(vm, "SyntaxError in %s at line %d", TR_CSTRING(compiler.filename).ptr, compiler.line);
-  /* Stupid ugly code, just to build a string... I suck... */
-  if (yytext[0]) TrString_push(vm, msg, tr_sprintf(vm, " near token '%s'", yytext));
-  if (yypos < yylimit) {
-    yybuf[yylimit]= '\0';
-    TrString_push(vm, msg, tr_sprintf(vm, " before text \""));
-    while (yypos < yylimit) {
-      if ('\n' == yybuf[yypos] || '\r' == yybuf[yypos]) break;
-      char c[2] = { yybuf[yypos++], '\0' };
-      TrString_push(vm, msg, tr_sprintf(vm, c));
-    }
-    TrString_push(vm, msg, tr_sprintf(vm, "\""));
-  }
-  /* TODO msg should not be a String object */
-  tr_raise(SyntaxError, TR_CSTRING(msg).ptr);
+	vm := RubyVM *(yyvm);
+	if !compiler.filename.(String) && !compiler.filename.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + compiler.filename));
+		return TR_UNDEF;
+	}
+	msg := tr_sprintf(vm, "SyntaxError in %s at line %d", compiler.filename.ptr, compiler.line);
+ 	// Stupid ugly code, just to build a string... I suck...
+	if yytext[0] { TrString_push(vm, msg, tr_sprintf(vm, " near token '%s'", yytext)); }
+  	if yypos < yylimit {
+		yybuf[yylimit]= '\0';
+		TrString_push(vm, msg, tr_sprintf(vm, " before text \""));
+		while (yypos < yylimit) {
+			if '\n' == yybuf[yypos] || '\r' == yybuf[yypos] { break; }
+			char c[2] = { yybuf[yypos++], '\0' };
+			TrString_push(vm, msg, tr_sprintf(vm, c));
+		}
+		TrString_push(vm, msg, tr_sprintf(vm, "\""));
+	}
+ 	// TODO msg should not be a String object
+	if !msg.(String) && !msg.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + msg));
+		return TR_UNDEF;
+	}
+	tr_raise(SyntaxError, msg.ptr);
 }
 
 /* Compiles code to a Block.

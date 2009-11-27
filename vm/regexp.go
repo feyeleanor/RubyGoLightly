@@ -28,14 +28,29 @@ func TrRegexp_new(vm *RubyVM, pattern *string, options int) RubyObject {
 }
 
 func TrRegexp_compile(vm *RubyVM, self, pattern *RubyObject) RubyObject {
-	return TrRegexp_new(vm, TR_CSTRING(pattern).ptr, 0);
+	if !pattern.(String) && !pattern.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + pattern));
+		return TR_UNDEF;
+	}
+	return TrRegexp_new(vm, pattern.ptr, 0);
 }
 
 #define OVECCOUNT 30    /* should be a multiple of 3 */
 
 func TrRegexp_match(vm *RubyVM, self, str *RubyObject) RubyObject {
-	r := TR_CTYPE(self, Regexp);
-	subject := TR_CSTRING(str).ptr;
+	if !self.(Regexp) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected Regexp"));
+		return TR_UNDEF;
+	}
+	if !str.(String) && !str.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + str));
+		return TR_UNDEF;
+	}
+	r := TrRegexp *(self);
+	subject := str.ptr;
 	rc int;
 	ovector [OVECCOUNT]int;
 
@@ -43,7 +58,7 @@ func TrRegexp_match(vm *RubyVM, self, str *RubyObject) RubyObject {
 		r.re,                /* the compiled pattern */
 		NULL,                 /* no extra data - we didn't study the pattern */
 		subject,              /* the subject string */
-		TR_CSTRING(str).len,      /* the length of the subject */
+		str.len,      		/* the length of the subject */
 		0,                    /* start at offset 0 in the subject */
 		0,                    /* default options */
 		ovector,              /* output vector for substring information */

@@ -70,8 +70,11 @@ func (vm *RubyVM) lookup(block *Block, receiver, msg *RubyObject, ip *MachineOP)
 	}
 	s := block.sites.a + block.sites.n;
 	block.sites.n += 1;
-
-	s.class = TR_CLASS(receiver);
+	if TR_IMMEDIATE(receiver) {
+		s.class = vm.classes[Object_type(vm, (receiver))];
+	} else {
+		s.class = Object *(receiver).class;
+	}
 	s.miss = 0;
 	s.method = method;
 	s.message = msg;
@@ -108,9 +111,22 @@ func (vm *RubyVM) defclass(name *RubyObject, block *Block, module int, super *Ru
 		if mod == TR_UNDEF { return TR_UNDEF }
 		Object_const_set(vm, vm.frame.class, name, mod);
 	}
-	ret := TR_NIL;
-	TR_WITH_FRAME(mod, mod, 0, { ret := vm.interpret(vm.frame, block, 0, 0, 0); });
-	if ret == TR_UNDEF { return TR_UNDEF }
+
+	// push a frame
+	vm.cf++;
+	if vm.cf >= TR_MAX_FRAMES { tr_raise(SystemStackError, "Stack overflow"); }
+
+	frame := Frame{previous: vm.frame, method: nil, filename: nil, line: 0, self: mod, class: mod, closure: nil}
+	if vm.cf == 0 { vm.top_frame = frame; }
+	vm.frame = frame;
+	vm.throw_reason = vm.throw_value = 0;
+	result := vm.interpret(vm.frame, block, 0, 0, 0);
+
+	// pop the frame
+	vm.cf--;
+	vm.frame = vm.frame.previous;
+
+	if result == TR_UNDEF { return TR_UNDEF }
 	return mod;
 }
 
@@ -164,9 +180,24 @@ func (vm *RubyVM) defmethod(frame *Frame, name *RubyObject, block *Block, meta b
 func (vm *RubyVM) yield(frame *Frame, args []RubyObject) RubyObject {
 	closure := frame.closure;
 	if !closure { tr_raise(LocalJumpError, "no block given"); }
-	ret := TR_NIL;
-	TR_WITH_FRAME(closure.self, closure.class, closure.parent, { ret = vm.interpret(vm.frame, closure.block, 0, args, closure); });
-	return ret;
+
+	// push a frame
+	vm.cf++;
+	if vm.cf >= TR_MAX_FRAMES { tr_raise(SystemStackError, "Stack overflow"); }
+
+	new_frame := Frame{previous: vm.frame, method: nil, filename: nil, line: 0, self: closure.self, class: closure.class, closure: closure.parent}
+	if vm.cf == 0 { vm.top_frame = new_frame; }
+	vm.frame = new_frame;
+	vm.throw_reason = vm.throw_value = 0;
+
+	// execute BODY inside the frame
+	result := vm.interpret(vm.frame, closure.block, 0, args, closure);
+
+	// pop the frame
+	vm.cf--;
+	vm.frame = vm.frame.previous;
+
+	return result;
 }
 
 // Interprets the code in b.code. Returns TR_UNDEF on error.
@@ -274,7 +305,12 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
     		case TR_OP_CACHE:
 				// TODO how to expire cache?
 				assert(&block.sites.a[i.C] && "Method cached but no CallSite found");
-				if block.sites.a[i.C].class == TR_CLASS((stack[i.A])) {
+				if TR_IMMEDIATE(stack[i.A]) {
+					class := vm.classes[Object_type(vm, stack[i.A])];
+				} else {
+					class := Object *(stack[i.A]).class;
+				}
+				if block.sites.a[i.C].class == class {
 					call = &block.sites.a[i.C]
 					ip += i.B;
 				} else {
@@ -482,12 +518,24 @@ func (vm *RubyVM) backtrace() RubyObject {
 		frame := vm.frame.previous;
 		while (frame) {
 			if frame.filename {
-				filename := TR_CSTRING(f.filename).ptr;
+				method_name := Method *(f.method).name;
+				if !method_name.(String) && !method_name.(Symbol) {
+					vm.throw_reason = TR_THROW_EXCEPTION;
+					vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + method_name));
+					return TR_UNDEF;
+				}
+				filename := method_name.ptr;
 			} else {
 				filename := "?"
 			}
 			if frame.method {
-				context := tr_sprintf(vm, "\tfrom %s:%lu:in `%s'", filename, f.line, TR_CSTRING(Method *(f.method).name).ptr);
+				method_name := Method *(f.method).name;
+				if !method_name.(String) && !method_name.(Symbol) {
+					vm.throw_reason = TR_THROW_EXCEPTION;
+					vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + method_name));
+					return TR_UNDEF;
+				}
+				context := tr_sprintf(vm, "\tfrom %s:%lu:in `%s'", filename, f.line, method_name.ptr);
 			} else {
 				context := tr_sprintf(vm, "\tfrom %s:%lu", filename, f.line);
 			}
@@ -500,8 +548,13 @@ func (vm *RubyVM) backtrace() RubyObject {
 
 func (vm *RubyVM) eval(code *string, filename *string) RubyObject {
 	if block := Block_compile(vm, code, filename, 0) {
-		if (vm.debug) { block.dump(vm); }
-		return vm.run(block, vm.self, TR_CLASS(vm.self), nil);
+		if (vm.debug) { block.dump(vm, 0); }
+		if TR_IMMEDIATE(vm.self) {
+			class := vm.classes[Object_type(vm, (vm.self))];
+		} else {
+			class := Object *(vm.self).class;
+		}
+		return vm.run(block, vm.self, class, nil);
 	} else {
 		return TR_UNDEF;
 	}
@@ -522,9 +575,21 @@ func (vm *RubyVM) load(filename *string) RubyObject {
 }
 
 func (vm *RubyVM) run(block *Block, self, class *RubyObject, args []RubyObject) RubyObject {
- 	ret := TR_NIL;
-	TR_WITH_FRAME(self, class, 0, { ret := vm.interpret(vm.frame, block, 0, args, 0); });
-	return ret;
+	// push a frame
+	vm.cf++;
+	if vm.cf >= TR_MAX_FRAMES { tr_raise(SystemStackError, "Stack overflow"); }
+
+	frame := Frame{self: self, method: nil, class: class, previous: vm.frame, closure: false, filename: nil, line:  0};
+	if vm.cf == 0 { vm.top_frame = frame; }
+	vm.frame = frame;
+	vm.throw_reason = vm.throw_value = 0;
+	result := vm.interpret(vm.frame, block, 0, args, 0);
+
+	// pop the frame
+	vm.cf--;
+	vm.frame = vm.frame.previous;
+
+	return result;
 }
 
 func newRubyVM() *RubyVM {

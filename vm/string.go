@@ -40,7 +40,12 @@ func TrSymbol_new(vm *RubyVM, str *string) RubyObject {
 }
 
 func TrSymbol_to_s(vm *RubyVM, self *RubyObject) RubyObject {
-	return TrString_new(vm, TR_CSTRING(self).ptr, TR_CSTRING(self).len);
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	return TrString_new(vm, self.ptr, self.len);
 }
 
 func TrSymbol_init(vm *RubyVM) {
@@ -55,7 +60,12 @@ func TrString_to_s(vm *RubyVM, self *RubyObject) RubyObject {
 }
 
 func TrString_size(vm *RubyVM, self) RubyObject {
-  return TR_INT2FIX(TR_CSTRING(self).len);
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	return TR_INT2FIX(self.len);
 }
 
 func TrString_new(vm *RubyVM, str *string, len size_t) RubyObject {
@@ -76,41 +86,82 @@ func TrString_new3(vm *RubyVM, len size_t) RubyObject {
 }
 
 func TrString_add(vm *RubyVM, self, other *RubyObject) RubyObject {
-	return tr_sprintf(vm, "%s%s", TR_CSTRING(self).ptr, TR_CSTRING(other).ptr);
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	if !other.(String) && !other.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + other));
+		return TR_UNDEF;
+	}
+	return tr_sprintf(vm, "%s%s", self.ptr, other.ptr);
 }
 
 func TrString_push(vm *RubyVM, self, other *RubyObject) RubyObject {
-	s := TR_CSTRING(self);
-	o := TR_CSTRING(other);
-  
-	orginal_len := s.len;
-	s.len += o.len;
-	s.ptr := TR_REALLOC(s.ptr, s.len+1);
-	memcpy(s.ptr + original_len, o.ptr, sizeof(char) * o.len);
-	s.ptr[s.len] = '\0';
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	if !other.(String) && !other.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + other));
+		return TR_UNDEF;
+	}
+	orginal_len := self.len;
+	self.len += other.len;
+	self.ptr := TR_REALLOC(self.ptr, self.len + 1);
+	memcpy(self.ptr + original_len, other.ptr, sizeof(char) * other.len);
+	self.ptr[self.len] = '\0';
 	return self;
 }
 
 func TrString_replace(vm *RubyVM, self, other *RubyObject) RubyObject {
-	TR_CSTRING(self).ptr = TR_CSTRING(other).ptr;
-	TR_CSTRING(self).len = TR_CSTRING(other).len;
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	if !other.(String) && !other.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + other));
+		return TR_UNDEF;
+	}
+	self.ptr, self.len = other.ptr, other.len;
 	return self;
 }
 
 func TrString_cmp(vm *RubyVM, self, other *RubyObject) RubyObject {
 	if (!other.(String)) return TR_INT2FIX(-1);
-	return TR_INT2FIX(strcmp(TR_CSTRING(self).ptr, TR_CSTRING(other).ptr));
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	return TR_INT2FIX(strcmp(self.ptr, other.ptr));
 }
 
 func TrString_substring(vm *RubyVM, self, start, len *RubyObject) RubyObject {
 	int s = TR_FIX2INT(start);
 	int l = TR_FIX2INT(len);
-	if (s < 0 || (s+l) > (int)TR_CSTRING(self).len) return TR_NIL;
-	return TrString_new(vm, TR_CSTRING(self).ptr + s, l);
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	if s < 0 || (s + l) > self.len { return TR_NIL; }
+	return TrString_new(vm, self.ptr + s, l);
 }
 
 func TrString_to_sym(vm *RubyVM, self *RubyObject) RubyObject {
-	return tr_intern(TR_CSTRING(self).ptr);
+	if !self.(String) && !self.(Symbol) {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
+		return TR_UNDEF;
+	}
+	return tr_intern(self.ptr);
 }
 
 // Uses variadic ... parameter which replaces the mechanism used by stdarg.h
