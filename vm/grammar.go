@@ -5,9 +5,7 @@
 
 /*#define YY_DEBUG 1*/
 
-#define YYSTYPE   OBJ
-#define YYMALLOC  TR_MALLOC
-#define YYREALLOC TR_REALLOC
+#define YYSTYPE   RubyObject
 #define yyvm      compiler.vm
 
 charbuf *string;
@@ -291,9 +289,9 @@ SEP       = ( - Comment? (EOL | ';') )+
 %%
 
 /* Raise a syntax error. */
-OBJ yyerror() {
-  vm = RubyVM *(yyvm);
-  OBJ msg = tr_sprintf(vm, "SyntaxError in %s at line %d", TR_STR_PTR(compiler.filename), compiler.line);
+RubyObject yyerror() {
+  vm := RubyVM *(yyvm);
+  msg := tr_sprintf(vm, "SyntaxError in %s at line %d", TR_STR_PTR(compiler.filename), compiler.line);
   /* Stupid ugly code, just to build a string... I suck... */
   if (yytext[0]) TrString_push(vm, msg, tr_sprintf(vm, " near token '%s'", yytext));
   if (yypos < yylimit) {

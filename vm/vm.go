@@ -13,56 +13,70 @@ import (
 	"call";
 )
 
+type RubyObject interface {
+	
+}
+
 type RubyVM struct {
 	symbols				*map[string] string;
-	globals				*map[string] OBJ;
-	consts				*map[string] OBJ;				// TODO this goes in modules
-	classes				[TR_T_MAX]OBJ;					// core classes
+	globals				*map[string] *RubyObject;
+	consts				*map[string] *RubyObject;				// TODO this goes in modules
+	classes				[TR_T_MAX]*RubyObject;					// core classes
 	top_frame			*Frame;							// top level frame
 	frame				*Frame;							// current frame
 	cf					int;							// current frame number
-	self				OBJ;							// root object
+	self				*RubyObject;							// root object
 	debug				int;
 	throw_reason		int;
-	throw_value	OBJ;
+	throw_value			*RubyObject;
 
 	// exceptions
-	cException			OBJ;
-	cScriptError		OBJ;
-	cSyntaxError		OBJ;
-	cStandardError		OBJ;
-	cArgumentError		OBJ;
-	cRuntimeError		OBJ;
-	cRegexpError		OBJ;
-	cTypeError			OBJ;
-	cSystemCallError	OBJ;
-	cIndexError			OBJ;
-	cLocalJumpError		OBJ;
-	cSystemStackError	OBJ;
-	cNameError			OBJ;
-	cNoMethodError		OBJ;
+	cException			*RubyObject;
+	cScriptError		*RubyObject;
+	cSyntaxError		*RubyObject;
+	cStandardError		*RubyObject;
+	cArgumentError		*RubyObject;
+	cRuntimeError		*RubyObject;
+	cRegexpError		*RubyObject;
+	cTypeError			*RubyObject;
+	cSystemCallError	*RubyObject;
+	cIndexError			*RubyObject;
+	cLocalJumpError		*RubyObject;
+	cSystemStackError	*RubyObject;
+	cNameError			*RubyObject;
+	cNoMethodError		*RubyObject;
   
 	// cached objects
-	sADD				OBJ;
-	sSUB				OBJ;
-	sLT					OBJ;
-	sNEG				OBJ;
-	sNOT				OBJ;
+	sADD				*RubyObject;
+	sSUB				*RubyObject;
+	sLT					*RubyObject;
+	sNEG				*RubyObject;
+	sNOT				*RubyObject;
 }
 
-func (vm *RubyVM) lookup(block *Block, receiver, msg OBJ, ip *MachineOP) OBJ {
-	method := TrObject_method(vm, receiver, msg);
+func (vm *RubyVM) lookup(block *Block, receiver, msg *RubyObject, ip *MachineOP) RubyObject {
+	method := Object_method(vm, receiver, msg);
 	if method == TR_UNDEF { return TR_UNDEF }
 
 	boing = *(ip - 1);
 	// TODO do not prealloc TrCallSite here, every one is a memory leak and a new one is created on polymorphic calls.
-	TrCallSite *s = (kv_pushp(TrCallSite, block.sites));
+	if block.sites.n == block.sites.m {
+		if block.sites.m > 0 {
+			block.sites.m <<= 1;
+		} else {
+			block.sites.m = 2;
+		}
+		block.sites.a = (TrCallSite*)TR_REALLOC(block.sites.a, sizeof(TrCallSite) * block.sites.m);
+	}
+	s := block.sites.a + block.sites.n;
+	block.sites.n += 1;
+
 	s.class = TR_CLASS(receiver);
 	s.miss = 0;
 	s.method = method;
 	s.message = msg;
 	if method == TR_NIL {
-		s.method = TrObject_method(vm, receiver, tr_intern("method_missing"));
+		s.method = Object_method(vm, receiver, tr_intern("method_missing"));
 		s.method_missing = 1;
 	}
   
@@ -77,11 +91,11 @@ func (vm *RubyVM) lookup(block *Block, receiver, msg OBJ, ip *MachineOP) OBJ {
 		(*boing).B = 1;								// jmp
 		(*boing).C = block.sites.Len() - 1;			// CallSite index
 	}
-	return OBJ(s);
+	return s;
 }
 
-func (vm *RubyVM) defclass(name OBJ, block *Block, module int, super OBJ) OBJ {
-	mod := TrObject_const_get(vm, vm.frame.class, name);
+func (vm *RubyVM) defclass(name *RubyObject, block *Block, module int, super *RubyObject) RubyObject {
+	mod := Object_const_get(vm, vm.frame.class, name);
 	if mod == TR_UNDEF { return TR_UNDEF }
   
 	if !mod {
@@ -89,10 +103,10 @@ func (vm *RubyVM) defclass(name OBJ, block *Block, module int, super OBJ) OBJ {
 		if module {
 			mod := newModule(vm, name);
 		} else {
-			mod := newClass(vm, name, super ? super : TR_CORE_CLASS(Object));
+			mod := newClass(vm, name, super ? super : vm.classes[TR_T_Object]);
 		}
 		if mod == TR_UNDEF { return TR_UNDEF }
-		TrObject_const_set(vm, vm.frame.class, name, mod);
+		Object_const_set(vm, vm.frame.class, name, mod);
 	}
 	ret := TR_NIL;
 	TR_WITH_FRAME(mod, mod, 0, { ret := vm.interpret(vm.frame, block, 0, 0, 0); });
@@ -100,14 +114,14 @@ func (vm *RubyVM) defclass(name OBJ, block *Block, module int, super OBJ) OBJ {
 	return mod;
 }
 
-func (vm *RubyVM) interpret_method(self OBJ, args []OBJ) OBJ {
+func (vm *RubyVM) interpret_method(self *RubyObject, args []RubyObject) RubyObject {
 	assert(vm.frame.method);
 	block := Block *(vm.frame.method.data);
 	if args.Len() != block.argc { tr_raise(ArgumentError, "wrong number of arguments (%d for %lu)", args.Len(), block.argc); }
 	return vm.interpret(vm, vm.frame, block, 0, args, 0);
 }
 
-func (vm *RubyVM) interpret_method_with_defaults(self OBJ, args []OBJ) OBJ {
+func (vm *RubyVM) interpret_method_with_defaults(self *RubyObject, args []RubyObject) RubyObject {
 	assert(vm.frame.method);
 	block := Block *(vm.frame.method.data);
 	req_argc := block.argc - block.defaults.Len();
@@ -121,7 +135,7 @@ func (vm *RubyVM) interpret_method_with_defaults(self OBJ, args []OBJ) OBJ {
 	}
 }
 
-func (vm *RubyVM) interpret_method_with_splat(self OBJ, args []OBJ) OBJ {
+func (vm *RubyVM) interpret_method_with_splat(self *RubyObject, args []RubyObject) RubyObject {
 	assert(vm.frame.method);
 	block := Block *(vm.frame.method.data);
 	// TODO support defaults
@@ -131,23 +145,23 @@ func (vm *RubyVM) interpret_method_with_splat(self OBJ, args []OBJ) OBJ {
 	return vm.interpret(vm.frame, block, 0, args[0:block.argc - 1], 0);
 }
 
-func (vm *RubyVM) defmethod(frame *Frame, name OBJ, block *Block, meta bool, receiver OBJ) OBJ {
+func (vm *RubyVM) defmethod(frame *Frame, name *RubyObject, block *Block, meta bool, receiver *RubyObject) RubyObject {
 	switch {
 		case block.arg_splat:			interpreter := TrFunc *(TrVM_interpret_method_with_splat);
 		case block.defaults.Len() > 0:	interpreter := TrFunc *(TrVM_interpret_method_with_defaults);
 		default:						interpreter := TrFunc *(TrVM_interpret_method);
 	}
-	method := newMethod(vm, interpreter, OBJ(block), -1);
+	method := newMethod(vm, interpreter, RubyObject(block), -1);
 	if method == TR_UNDEF { return TR_UNDEF }
 	if meta {
-		TrObject_add_singleton_method(vm, receiver, name, method);
+		Object_add_singleton_method(vm, receiver, name, method);
 	} else {
 		frame.class.add_method(vm, name, method);
 	}
 	return TR_NIL;
 }
 
-func (vm *RubyVM) yield(frame *Frame, args []OBJ) OBJ {
+func (vm *RubyVM) yield(frame *Frame, args []RubyObject) RubyObject {
 	closure := frame.closure;
 	if !closure { tr_raise(LocalJumpError, "no block given"); }
 	ret := TR_NIL;
@@ -156,13 +170,13 @@ func (vm *RubyVM) yield(frame *Frame, args []OBJ) OBJ {
 }
 
 // Interprets the code in b.code. Returns TR_UNDEF on error.
-func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, closure *Closure) OBJ {
-	frame.stack := make([]OBJ, block.regc);
+func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyObject, closure *Closure) RubyObject {
+	frame.stack := make([]RubyObject, block.regc);
 	ip := *block.code.a + start;
 	stack := frame.stack;
 
 	i := *ip;
-	OBJ *k = block.k.a;
+	k := block.k.a;
 	Block **blocks = block.blocks.a;
 	frame.line = block.line;
 	frame.filename = block.filename;
@@ -218,7 +232,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 				return TR_UNDEF;
 
 			case TR_OP_YIELD:
-				if OBJ(stack[i.A] = vm.yield(frame, i.B, &stack[i.A + 1])) == TR_UNDEF { return TR_UNDEF; }
+				if RubyObject(stack[i.A] = vm.yield(frame, i.B, &stack[i.A + 1])) == TR_UNDEF { return TR_UNDEF; }
     
     		// variable and consts
     		case TR_OP_SETUPVAL:
@@ -242,10 +256,10 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 				stack[i.A] = TR_KH_GET(TR_COBJECT(frame.class).ivars, k[i.Get_Bx()])
 
     		case TR_OP_SETCONST:
-				TrObject_const_set(vm, frame.self, k[i.Get_Bx()], stack[i.A])
+				Object_const_set(vm, frame.self, k[i.Get_Bx()], stack[i.A])
 
     		case TR_OP_GETCONST:
-				stack[i.A] = TrObject_const_get(vm, frame.self, k[i.Get_Bx()])
+				stack[i.A] = Object_const_get(vm, frame.self, k[i.Get_Bx()])
 
     		case TR_OP_SETGLOBAL:
 				TR_KH_SET(vm.globals, k[i.Get_Bx()], stack[i.A])
@@ -255,7 +269,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
     
     		// method calling
     		case TR_OP_LOOKUP:
-				if OBJ(call = TrCallSite *(vm.lookup(block, stack[i.A], k[i.Get_Bx()], ip))) == TR_UNDEF { return TR_UNDEF; }
+				if RubyObject(call = TrCallSite *(vm.lookup(block, stack[i.A], k[i.Get_Bx()], ip))) == TR_UNDEF { return TR_UNDEF; }
 
     		case TR_OP_CACHE:
 				// TODO how to expire cache?
@@ -332,18 +346,18 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
     
 			// definition
 			case TR_OP_DEF:
-				if OBJ(vm.defmethod(frame, k[i.Get_Bx()], blocks[i.A], 0, 0)) == TR_UNDEF { return TR_UNDEF; }
+				if RubyObject(vm.defmethod(frame, k[i.Get_Bx()], blocks[i.A], 0, 0)) == TR_UNDEF { return TR_UNDEF; }
 
 			case TR_OP_METADEF:
-				if OBJ(vm.defmethod(frame, k[i.Get_Bx()], blocks[i.A], 1, stack[(*(ip + 1)).A])) == TR_UNDEF { return TR_UNDEF; }
+				if RubyObject(vm.defmethod(frame, k[i.Get_Bx()], blocks[i.A], 1, stack[(*(ip + 1)).A])) == TR_UNDEF { return TR_UNDEF; }
 				ip++
 
 			case TR_OP_CLASS:
-				if OBJ(vm.defclass(k[i.Get_Bx()], blocks[i.A], 0, stack[(*(ip + 1)).A])) == TR_UNDEF { return TR_UNDEF; }
+				if RubyObject(vm.defclass(k[i.Get_Bx()], blocks[i.A], 0, stack[(*(ip + 1)).A])) == TR_UNDEF { return TR_UNDEF; }
 				ip++
 
 			case TR_OP_MODULE:
-				if OBJ(vm.defclass(k[i.Get_Bx()], blocks[i.A], 1, 0)) == TR_UNDEF { return TR_UNDEF; }
+				if RubyObject(vm.defclass(k[i.Get_Bx()], blocks[i.A], 1, 0)) == TR_UNDEF { return TR_UNDEF; }
     
 			// jumps
 			case TR_OP_JMP:
@@ -409,7 +423,12 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 				}
 
 				if TR_IS_FIX(rb) {
-					stack[i.A] = TR_BOOL(TR_FIX2INT(rb) < TR_FIX2INT(rc))
+					if TR_FIX2INT(rb) < TR_FIX2INT(rc) {
+						stack[i.A] = TR_TRUE;
+					} else {
+						stack[i.A] = TR_FALSE;
+					}
+
 				} else {
 					stack[i.A] = tr_send(rb, vm.sLT, rc)
 				}
@@ -433,11 +452,15 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 
 			case TR_OP_NOT:
 				if i.B & (1 << (SIZE_B - 1) {
-					rb := k[i.B & ~0x100]
+					rb := k[i.B & ~0x100];
 				} else {
-					rb := stack[i.B]
+					rb := stack[i.B];
 				}
-				stack[i.A] = TR_BOOL(!TR_TEST(rb))
+				if TR_TEST(rb) {
+					stack[i.A] = TR_FALSE;
+				} else {
+					stack[i.A] = TR_TRUE;
+				}
 
 			default:
 				// if there are unknown opcodes in the stream then halt the VM
@@ -451,7 +474,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []OBJ, 
 }
 
 /* returns the backtrace of the current call frames */
-func (vm *RubyVM) backtrace() OBJ {
+func (vm *RubyVM) backtrace() RubyObject {
 	backtrace := newArray(vm);
 	if vm.frame {
 		// skip a frame since it's the one doing the raising
@@ -474,7 +497,7 @@ func (vm *RubyVM) backtrace() OBJ {
 	return backtrace;
 }
 
-func (vm *RubyVM) eval(code *string, filename *string) OBJ {
+func (vm *RubyVM) eval(code *string, filename *string) RubyObject {
 	if block := Block_compile(vm, code, filename, 0) {
 		if (vm.debug) { block.dump(vm); }
 		return vm.run(block, vm.self, TR_CLASS(vm.self), nil);
@@ -483,7 +506,7 @@ func (vm *RubyVM) eval(code *string, filename *string) OBJ {
 	}
 }
 
-func (vm *RubyVM) load(filename *string) OBJ {
+func (vm *RubyVM) load(filename *string) RubyObject {
 	stats = new(stat);
 	if stat(filename, &stats) == -1 { tr_raise_errno(filename); }
 
@@ -497,7 +520,7 @@ func (vm *RubyVM) load(filename *string) OBJ {
 	return TR_NIL;
 }
 
-func (vm *RubyVM) run(block *Block, self, class OBJ, args []OBJ) OBJ {
+func (vm *RubyVM) run(block *Block, self, class *RubyObject, args []RubyObject) RubyObject {
  	ret := TR_NIL;
 	TR_WITH_FRAME(self, class, 0, { ret := vm.interpret(vm.frame, block, 0, args, 0); });
 	return ret;
@@ -506,8 +529,8 @@ func (vm *RubyVM) run(block *Block, self, class OBJ, args []OBJ) OBJ {
 func newRubyVM() *RubyVM {
 	vm := new(RubyVM);
 	vm.symbols = kh_init(str);
-	vm.globals = kh_init(OBJ);
-	vm.consts = kh_init(OBJ);
+	vm.globals = kh_init(RubyObject);
+	vm.consts = kh_init(RubyObject);
 	vm.debug = 0;
   
 	// bootstrap core classes, order is important here, so careful, mkay?
@@ -515,15 +538,15 @@ func newRubyVM() *RubyVM {
 	TrSymbol_init(vm);
 	TrModule_init(vm);
 	TrClass_init(vm);
-	TrObject_preinit(vm);
-	Class *symbolc = (Class*)TR_CORE_CLASS(Symbol);
-	Class *modulec = (Class*)TR_CORE_CLASS(Module);
-	Class *classc = (Class*)TR_CORE_CLASS(Class);
-	Class *methodc = (Class*)TR_CORE_CLASS(Method);
-	Class *objectc = (Class*)TR_CORE_CLASS(Object);
+	Object_preinit(vm);
+	Class *symbolc = (Class*)vm.classes[TR_T_Symbol];
+	Class *modulec = (Class*)vm.classes[TR_T_Module];
+	Class *classc = (Class*)vm.classes[TR_T_Class];
+	Class *methodc = (Class*)vm.classes[TR_T_Method];
+	Class *objectc = (Class*)vm.classes[TR_T_Object];
  	// set proper superclass has Object is defined last
-	symbolc.super = modulec.super = methodc.super = OBJ(objectc);
-	classc.super = OBJ(modulec);
+	symbolc.super = modulec.super = methodc.super = RubyObject(objectc);
+	classc.super = RubyObject(modulec);
 	// inject core classes metaclass
 	symbolc.class = newMetaClass(vm, objectc.class);
 	modulec.class = newMetaClass(vm, objectc.class);
@@ -532,10 +555,10 @@ func newRubyVM() *RubyVM {
 	objectc.class = newMetaClass(vm, objectc.class);
   
  	// Some symbols are created before Object, so make sure all have proper class.
-	TR_KH_EACH(vm.symbols, i, sym, { TR_COBJECT(sym).class = OBJ(symbolc); });
+	TR_KH_EACH(vm.symbols, i, sym, { TR_COBJECT(sym).class = RubyObject(symbolc); });
   
 	// bootstrap rest of core classes, order is no longer important here
-	TrObject_init(vm);
+	Object_init(vm);
 	TrError_init(vm);
 	TrBinding_init(vm);
 	TrPrimitive_init(vm);
@@ -547,7 +570,7 @@ func newRubyVM() *RubyVM {
 	TrRange_init(vm);
 	TrRegexp_init(vm);
   
-	vm.self = TrObject_alloc(vm, 0);
+	vm.self = Object_alloc(vm, 0);
 	vm.cf = -1;
   
  	// cache some commonly used values

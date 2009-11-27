@@ -117,14 +117,11 @@ static const double __ac_HASH_UPPER = 0.77;
 		khval_t *vals;													\
 	} kh_##name##_t;													\
 	static inline kh_##name##_t *kh_init_##name() {						\
-		return (kh_##name##_t*)TR_CALLOC(1, sizeof(kh_##name##_t));		\
+		return kh_##name##_t{};											\
 	}																	\
 	static inline void kh_destroy_##name(kh_##name##_t *h)				\
 	{																	\
 		if (h) {														\
-			TR_FREE(h.keys); TR_FREE(h.flags);								\
-			TR_FREE(h.vals);												\
-			TR_FREE(h);													\
 		}																\
 	}																	\
 	static inline void kh_clear_##name(kh_##name##_t *h)				\
@@ -158,7 +155,7 @@ static const double __ac_HASH_UPPER = 0.77;
 			new_n_buckets = __ac_prime_list[t+1];						\
 			if (h.size >= (khint_t)(new_n_buckets * __ac_HASH_UPPER + 0.5)) j = 0;	\
 			else {														\
-				new_flags = (uint32_t*)TR_MALLOC(((new_n_buckets>>4) + 1) * sizeof(uint32_t));	\
+				new_flags = make([]uint32,(new_n_buckets >> 4) + 1);	\
 				memset(new_flags, 0xaa, ((new_n_buckets>>4) + 1) * sizeof(uint32_t)); \
 				if (h.n_buckets < new_n_buckets) {						\
 					h.keys = (khkey_t*)TR_REALLOC(h.keys, new_n_buckets * sizeof(khkey_t)); \
@@ -201,7 +198,6 @@ static const double __ac_HASH_UPPER = 0.77;
 				if (kh_is_map)											\
 					h.vals = (khval_t*)TR_REALLOC(h.vals, new_n_buckets * sizeof(khval_t)); \
 			}															\
-			TR_FREE(h.flags);												\
 			h.flags = new_flags;										\
 			h.n_buckets = new_n_buckets;								\
 			h.n_occupied = h.size;									\

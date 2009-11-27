@@ -12,23 +12,15 @@
 #include "vendor/khash.h"
 
 /* allocation macros */
-#define TR_MALLOC            GC_malloc
-#define TR_CALLOC(m,n)       GC_MALLOC((m)*(n))
 #define TR_REALLOC           GC_realloc
-#define TR_FREE(S)           do { (void)(S); } while (0)
 
 /* type convertion macros */
-#define TR_TYPE(X)           TrObject_type(vm, (X))
+#define TR_TYPE(X)           Object_type(vm, (X))
 #define TR_CLASS(X)          (TR_IMMEDIATE(X) ? vm.classes[TR_TYPE(X)] : TR_COBJECT(X).class)
-#define TR_IS_A(X,T)         (TR_TYPE(X) == TR_T_##T)
-#define TR_COBJECT(X)        ((TrObject*)(X))
+#define TR_COBJECT(X)        ((Object*)(X))
 #define TR_TYPE_ERROR(T)     TR_THROW(EXCEPTION, TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " #T)))
 #define TR_CTYPE(X,T)        ((X.(T) ? 0 : TR_TYPE_ERROR(T)),(Tr##T*)(X))
-#define TR_CHASH(X)          TR_CTYPE(X,Hash)
-#define TR_CRANGE(X)         TR_CTYPE(X,Range)
-#define TR_CREGEXP(X)        TR_CTYPE(X,Regexp)
 #define TR_CSTRING(X)        ((X.(String) || X.(Symbol) ? 0 : TR_TYPE_ERROR(T)),(TrString*)(X))
-#define TR_CBINDING(X)       TR_CTYPE(X,Binding)
 
 /* string macros */
 #define TR_STR_PTR(S)        (TR_CSTRING(S).ptr)
@@ -38,21 +30,21 @@
 #define TR_KH_GET(KH,K) ({ \
 	key := (K); \
 	hash := (KH); \
-	k := kh_get(OBJ, hash, key); \
+	k := kh_get(RubyObject, hash, key); \
 	k == kh_end(hash) ? TR_NIL : kh_value(hash, k); \
 })
 #define TR_KH_SET(KH,K,V) ({ \
 	key := (K); \
 	hash := (KH); \
 	int ret; \
-	k := kh_put(OBJ, hash, key, &ret); \
+	k := kh_put(RubyObject, hash, key, &ret); \
 	kh_value(hash, k) = (V); \
 })
 #define TR_KH_EACH(H,I,V,B) ({ \
 	khiter_t __k##V; \
 	for (__k##V = kh_begin(H); __k##V != kh_end(H); ++__k##V) \
 		if (kh_exist((H), __k##V)) { \
-			OBJ V = kh_value((H), __k##V); \
+			V := kh_value((H), __k##V); \
 			B \
 		} \
 	})
@@ -80,19 +72,6 @@
 #define TR_TRUE              OBJ(4)
 #define TR_UNDEF             OBJ(6)
 #define TR_TEST(X)           ((X) == TR_NIL || (X) == TR_FALSE ? 0 : 1)
-#define TR_BOOL(X)           ((X) ? TR_TRUE : TR_FALSE)
-
-/* core classes macros */
-#define TR_INIT_CORE_OBJECT(T) ({ \
-	o := new(Tr##T); \
-	o.type  = TR_T_##T; \
-	o.class = vm.classes[TR_T_##T]; \
-	o.ivars = kh_init(OBJ); \
-	o; \
-})
-#define TR_CORE_CLASS(T)     vm.classes[TR_T_##T]
-#define TR_INIT_CORE_CLASS(T,S) \
-	TR_CORE_CLASS(T) = TrObject_const_set(vm, vm.self, tr_intern(#T), newClass(vm, tr_intern(#T), TR_CORE_CLASS(S)))
 
 /* API macros */
 #define tr_getivar(O,N)      TR_KH_GET(TR_COBJECT(O).ivars, tr_intern(N))
@@ -103,21 +82,21 @@
 #define tr_raise(T,M,...)    TR_THROW(EXCEPTION, TrException_new(vm, vm.c##T, tr_sprintf(vm, (M), ##__VA_ARGS__)))
 #define tr_raise_errno(M)    tr_raise(SystemCallError, "%s: %s", strerror(errno), (M))
 #define tr_def(C,N,F,A)      (C).add_method(vm, tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
-#define tr_metadef(O,N,F,A)  TrObject_add_singleton_method(vm, (O), tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
-#define tr_defclass(N,S)     TrObject_const_set(vm, vm.self, tr_intern(N), newClass(vm, tr_intern(N), S))
-#define tr_defmodule(N)      TrObject_const_set(vm, vm.self, tr_intern(N), newModule(vm, tr_intern(N)))
+#define tr_metadef(O,N,F,A)  Object_add_singleton_method(vm, (O), tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
+#define tr_defclass(N,S)     Object_const_set(vm, vm.self, tr_intern(N), newClass(vm, tr_intern(N), S))
+#define tr_defmodule(N)      Object_const_set(vm, vm.self, tr_intern(N), newModule(vm, tr_intern(N)))
 
 #define tr_send(R,MSG,...)   ({ \
 	__argv[] := { (MSG), ##__VA_ARGS__ }; \
-	TrObject_send(vm, R, sizeof(__argv)/sizeof(OBJ), __argv); \
+	Object_send(vm, R, sizeof(__argv)/sizeof(RubyObject), __argv); \
 })
 #define tr_send2(R,STR,...)  tr_send((R), tr_intern(STR), ##__VA_ARGS__)
 
 typedef unsigned long OBJ;
 typedef unsigned char u8;
 
-KHASH_MAP_INIT_STR(str, OBJ)
-KHASH_MAP_INIT_INT(OBJ, OBJ)
+KHASH_MAP_INIT_STR(str, RubyObject)
+KHASH_MAP_INIT_INT(RubyObject, RubyObject)
 
 typedef enum {
   /*  0 */ TR_T_Object, TR_T_Module, TR_T_Class, TR_T_Method, TR_T_Binding,
@@ -135,37 +114,31 @@ typedef enum {
 } TR_THROW_REASON;
 
 type TrCallSite struct {
-	class			OBJ;
-	method			OBJ;
-	message			OBJ;
+	class			*RubyObject;
+	method			*RubyObject;
+	message			*RubyObject;
 	method_missing	bool;
 	miss			size_t;
 }
 
 type TrUpval struct {
-	value			*OBJ;
-	closed			OBJ;		// value when closed
+	value			*RubyObject;
+	closed			*RubyObject;		// value when closed
 }
 
-typedef OBJ (TrFunc)(vm *struct TrVM, OBJ receiver, ...);
+typedef OBJ (TrFunc)(vm *struct TrVM, receiver *RubyObject, ...);
 
 type TrBinding struct {
 	type 			TR_T;
-	class			OBJ;
-	ivars			map[string] OBJ;
+	class			*RubyObject;
+	ivars			map[string] *RubyObject;
   	frame			*Frame;
-}
-
-type TrObject struct {
-	type 			TR_T;
-	class			OBJ;
-	ivars			*map[string] OBJ;
 }
 
 type TrString struct {
 	type 			TR_T;
-	class			OBJ;
-	ivars			*map[string] OBJ;
+	class			*RubyObject;
+	ivars			*map[string] *RubyObject;
 	ptr				*char;
 	len				size_t;
 	interned		bool;
@@ -174,23 +147,23 @@ type TrSymbol TrString
 
 type TrRange struct {
 	type			TR_T;
-	class			OBJ;
-	ivars			*map[string] OBJ;
-	first, last		OBJ;
+	class			*RubyObject;
+	ivars			*map[string] *RubyObject;
+	first, last		*RubyObject;
 	exclusive		int;
 }
 
 type TrHash struct {
 	type			TR_T;
-	class			OBJ;
-	ivars			*map[string] OBJ;
-	kh				*map[string] OBJ;
+	class			*RubyObject;
+	ivars			*map[string] *RubyObject;
+	kh				*map[string] *RubyObject;
 }
 
 type TrRegexp struct {
 	type			TR_T;
-	class			OBJ;
-	ivars			*map[string] OBJ;
+	class			*RubyObject;
+	ivars			*map[string] RubyObject;
   	re				*pcre;
 }
 

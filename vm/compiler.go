@@ -7,31 +7,24 @@ import (
 // ast node
 type ASTNode struct {
 	type		TR_T;
-	class		OBJ;
-	ivars		*map[string] OBJ;
+	class		*RubyObject;
+	ivars		*map[string] RubyObject;
 	ntype		int;
-	args		[3]OBJ;
+	args		[3]RubyObject;
 	line		size_t;
 }
 
-func newASTNode(vm *RubyVM, type int, a, b, c OBJ, line size_t) OBJ {
-	node = new(ASTNode);
-	node.ntype = type;
-	node.type = TR_T_Node;
-	node.args[0] = a;
-	node.args[1] = b;
-	node.args[2] = c;
-	node.line = line;
-	return OBJ(node);
+func newASTNode(vm *RubyVM, type int, a, b, c *RubyObject, line size_t) RubyObject {
+	return ASTNode{ntype: type, type: TR_T_NODE, args: {a, b, c}, line: line}
 }
 
 type Compiler struct {
 	line		int;
-	filename	OBJ;
+	filename	*RubyObject;
 	vm			*RubyVM;
   	block		*Block;
   	reg			size_t;
-  	node		OBJ;
+  	node		*RubyObject;
 }
 
 // compiler
@@ -66,7 +59,7 @@ func (self *ASTNode) compile_to_RK(vm *RubyVM, c *Compiler, b *Block, reg int) i
 	}
 }
 
-func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) OBJ {
+func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObject {
 	if !self { return TR_NIL; }
 	start_reg := reg;
 	if reg >= b.regc { b.regc = reg + 1; }

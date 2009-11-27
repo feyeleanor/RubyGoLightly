@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 import (
+	"bytes";
 	"fmt";
 	"tr";
 	"internal";
@@ -10,14 +11,14 @@ import (
 
 // symbol
 
-func TrSymbol_lookup(vm *RubyVM, str string) OBJ {
+func TrSymbol_lookup(vm *RubyVM, str string) RubyObject {
 	symbols := vm.symbols;
 	k := kh_get(str, symbols, str);
 	if (k != kh_end(symbols)) return kh_value(symbols, k);
 	return TR_NIL;
 }
 
-func TrSymbol_add(vm *RubyVM, str *string, id OBJ) {
+func TrSymbol_add(vm *RubyVM, str *string, id *RubyObject) {
 	ret int;
 	symbols := vm.symbols;
 	k := kh_put(str, symbols, str, &ret);
@@ -25,69 +26,60 @@ func TrSymbol_add(vm *RubyVM, str *string, id OBJ) {
 	kh_value(symbols, k) = id;
 }
 
-func TrSymbol_new(vm *RubyVM, str *string) OBJ {
+func TrSymbol_new(vm *RubyVM, str *string) RubyObject {
 	id := TrSymbol_lookup(vm, str);
   
 	if (!id) {
-		s := TR_INIT_CORE_OBJECT(Symbol);
-		s.len = strlen(str);
-		s.ptr = make([]byte, s.len + 1);
-		s.interned = 1;
-		memcpy(s.ptr, str, sizeof(char) * s.len);
+		s := Symbol{type: TR_T_Symbol, class: vm.classes[TR_T_Symbol], ivars: kh_init(RubyObject), len: strlen(str), ptr: make([]byte, s.len + 1), interned: true};
+		bytes.Copy(s.ptr, str[0:s.len - 1]);
 		s.ptr[s.len] = '\0';
-		id := OBJ(s);
+		id := s;
 		TrSymbol_add(vm, s.ptr, id);
 	}
 	return id;
 }
 
-func TrSymbol_to_s(vm *RubyVM, self OBJ) OBJ {
+func TrSymbol_to_s(vm *RubyVM, self *RubyObject) RubyObject {
 	return TrString_new(vm, TR_STR_PTR(self), TR_STR_LEN(self));
 }
 
 func TrSymbol_init(vm *RubyVM) {
-  OBJ c = TR_INIT_CORE_CLASS(Symbol, Object);
+  c := vm.classes[TR_T_Symbol] = Object_const_set(vm, vm.self, tr_intern(Symbol), newClass(vm, tr_intern(Symbol), vm.classes[TR_T_Object]));
   tr_def(c, "to_s", TrSymbol_to_s, 0);
 }
 
 // string
 
-func TrString_to_s(vm *RubyVM, self OBJ) OBJ {
+func TrString_to_s(vm *RubyVM, self *RubyObject) RubyObject {
 	return self;
 }
 
-func TrString_size(vm *RubyVM, self) OBJ {
+func TrString_size(vm *RubyVM, self) RubyObject {
   return TR_INT2FIX(TR_CSTRING(self).len);
 }
 
-func TrString_new(vm *RubyVM, str *string, len size_t) OBJ {
-	s := TR_INIT_CORE_OBJECT(String);
-	s.len = len;
-	s.ptr = make([]byte, s.len + 1);
-	s.interned = 0;
-	memcpy(s.ptr, str, sizeof(char) * s.len);
+func TrString_new(vm *RubyVM, str *string, len size_t) RubyObject {
+	s := String{type: TR_T_String, class: vm.classes[TR_T_String], ivars: kh_init(RubyObject), len: len, ptr: make([]byte, s.len + 1)};
+	bytes.Copy(s.ptr, str[0:s.len - 1]);
 	s.ptr[s.len] = '\0';
-	return OBJ(s);
+	return s;
 }
 
-func TrString_new2(vm *RubyVM, str *string) OBJ {
+func TrString_new2(vm *RubyVM, str *string) RubyObject {
 	return TrString_new(vm, str, strlen(str));
 }
 
-func TrString_new3(vm *RubyVM, len size_t) OBJ {
-	s := TR_INIT_CORE_OBJECT(String);
-	s.len = len;
-	s.ptr = make([]byte, s.len + 1);
-	s.interned = 0;
-	s.ptr[s.len] = '\0';
-	return OBJ(s);
+func TrString_new3(vm *RubyVM, len size_t) RubyObject {
+	s := String{type: TR_T_String, class: vm.classes[TR_T_String], ivars: kh_init(RubyObject), len: len, ptr: make([]byte, s.len + 1)};
+	s.ptr[s.len] = '\0'
+	return s;
 }
 
-func TrString_add(vm *RubyVM, self, other OBJ) OBJ {
+func TrString_add(vm *RubyVM, self, other *RubyObject) RubyObject {
 	return tr_sprintf(vm, "%s%s", TR_STR_PTR(self), TR_STR_PTR(other));
 }
 
-func TrString_push(vm *RubyVM, self, other OBJ) OBJ {
+func TrString_push(vm *RubyVM, self, other *RubyObject) RubyObject {
 	s := TR_CSTRING(self);
 	o := TR_CSTRING(other);
   
@@ -99,31 +91,30 @@ func TrString_push(vm *RubyVM, self, other OBJ) OBJ {
 	return self;
 }
 
-func TrString_replace(vm *RubyVM, self, other OBJ) OBJ {
-	TR_FREE(TR_STR_PTR(self));
+func TrString_replace(vm *RubyVM, self, other *RubyObject) RubyObject {
 	TR_STR_PTR(self) = TR_STR_PTR(other);
 	TR_STR_LEN(self) = TR_STR_LEN(other);
 	return self;
 }
 
-func TrString_cmp(vm *RubyVM, self, other OBJ) OBJ {
+func TrString_cmp(vm *RubyVM, self, other *RubyObject) RubyObject {
 	if (!other.(String)) return TR_INT2FIX(-1);
 	return TR_INT2FIX(strcmp(TR_STR_PTR(self), TR_STR_PTR(other)));
 }
 
-func TrString_substring(vm *RubyVM, self, start, len OBJ) OBJ {
+func TrString_substring(vm *RubyVM, self, start, len *RubyObject) RubyObject {
 	int s = TR_FIX2INT(start);
 	int l = TR_FIX2INT(len);
 	if (s < 0 || (s+l) > (int)TR_STR_LEN(self)) return TR_NIL;
 	return TrString_new(vm, TR_STR_PTR(self)+s, l);
 }
 
-func TrString_to_sym(vm *RubyVM, OBJ self) OBJ {
+func TrString_to_sym(vm *RubyVM, self *RubyObject) RubyObject {
 	return tr_intern(TR_STR_PTR(self));
 }
 
 // Uses variadic ... parameter which replaces the mechanism used by stdarg.h
-func tr_sprintf(vm *RubyVM, fmt *string, args ...) OBJ {
+func tr_sprintf(vm *RubyVM, fmt *string, args ...) RubyObject {
 	arg va_list;
 	va_start(arg, fmt);
 	len := vsnprintf(NULL, 0, fmt, arg);
@@ -133,12 +124,11 @@ func tr_sprintf(vm *RubyVM, fmt *string, args ...) OBJ {
 	vsprintf(ptr, fmt, arg);
 	va_end(arg);
 	str := TrString_new(vm, ptr, len);
-	TR_FREE(ptr);
 	return str;
 }
 
 func TrString_init(vm *RubyVM) {
-	c := TR_INIT_CORE_CLASS(String, Object);
+	c := vm.classes[TR_T_String] = Object_const_set(vm, vm.self, tr_intern(String), newClass(vm, tr_intern(String), vm.classes[TR_T_Object]));
 	tr_def(c, "to_s", TrString_to_s, 0);
 	tr_def(c, "to_sym", TrString_to_sym, 0);
 	tr_def(c, "size", TrString_size, 0);

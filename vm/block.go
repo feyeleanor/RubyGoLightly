@@ -18,7 +18,7 @@ type Block struct {
 	regc		int;
 	argc		int;
 	arg_splat	int;
-	filename	OBJ;
+	filename	*RubyObject;
 	line		int;
 	parent 		*Block;
 	// dynamic
@@ -44,7 +44,7 @@ func newBlock(compiler *Compiler, parent *Block) *Block {
 
 #define INSPECT_K(K)  (K.(Symbol) ? TR_STR_PTR(K) : (sprintf(buf, "%d", TR_FIX2INT(K)), buf))
 
-func (b *Block) dump2(vm *RubyVM, level int) OBJ {
+func (b *Block) dump2(vm *RubyVM, level int) RubyObject {
 	char buf[10];
   
 	size_t i;
@@ -87,7 +87,7 @@ func (b *Block) dump(vm *RubyVM) {
 	b.dump2(vm, 0);
 }
 
-func (block *Block) push_value(k OBJ) int {
+func (block *Block) push_value(k *RubyObject) int {
 	size_t i;
 	for i = 0; i < block.k.Len(); ++i {
 		if block.k.At(i) == k { return i; }
@@ -108,7 +108,7 @@ func (block *Block) push_string(str *string) int {
 	return blk.strings.Len - 1;
 }
 
-func (block *Block) find_local(name OBJ) int {
+func (block *Block) find_local(name *RubyObject) int {
 	size_t i;
 	for (i = 0; i < blk.locals.Len(); ++i) {
 		if blk.locals.At(i) == name { return i; }
@@ -116,28 +116,28 @@ func (block *Block) find_local(name OBJ) int {
 	return -1;
 }
 
-func (block *Block) push_local(name OBJ) int {
+func (block *Block) push_local(name *RubyObject) int {
 	i = block.find_local(name);
 	if i != -1 { return i; }
 	block.locals.Push(name);
 	return block.locals.Len() - 1;
 }
 
-func (block *Block) find_upval(name OBJ) int {
+func (block *Block) find_upval(name *RubyObject) int {
 	for (i = 0; i < block.upvals.Len(); ++i) {
 		if block.upvals.At(i) == name { return i; }
 	}
 	return -1;
 }
 
-func (block *Block) find_upval_in_scope(name OBJ) int {
+func (block *Block) find_upval_in_scope(name *RubyObject) int {
 	if (!block.parent) { return -1; }
 	i = -1;
 	while (block && (i = block.find_local(name)) == -1) { block = block.parent; }
 	return i;
 }
 
-func (block *Block) push_upval(name OBJ) int {
+func (block *Block) push_upval(name *RubyObject) int {
 	i = block.find_upval(name);
 	if (i != -1) return i;
 

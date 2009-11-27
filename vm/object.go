@@ -4,13 +4,17 @@ import (
 	"call";
 )
 
-func TrObject_alloc(vm *RubyVM, class OBJ) OBJ {
-	o := TR_INIT_CORE_OBJECT(Object);
-	if class { o.class = class; }
-	return OBJ(o);
+type Object struct {
+	type 			TR_T;
+	class			*RubyObject;
+	ivars			*map[string] *RubyObject;
 }
 
-int TrObject_type(vm *RubyVM, OBJ obj) {
+func Object_alloc(vm *RubyVM, class *RubyObject) RubyObject {
+	return Object{type: TR_T_Object, class: vm.classes[TR_T_Object], ivars: kh_init(RubyObject), class: class};
+}
+
+func Object_type(vm *RubyVM, obj *RubyObject) int {
 	switch (obj) {
 		case TR_NIL: return TR_T_NilClass;
 		case TR_TRUE: return TR_T_TrueClass;
@@ -20,20 +24,20 @@ int TrObject_type(vm *RubyVM, OBJ obj) {
 	return TR_COBJECT(obj).type;
 }
 
-func TrObject_method(vm *RubyVM, self OBJ, name OBJ) OBJ {
+func Object_method(vm *RubyVM, self, name *RubyObject) RubyObject {
 	return TR_CLASS(self).instance_method(vm, name);
 }
 
-func TrObject_method_missing(vm *RubyVM, self OBJ, argc int, argv []OBJ) OBJ {
+func Object_method_missing(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
 	assert(argc > 0);
 	tr_raise(NoMethodError, "Method not found: `%s'", TR_STR_PTR(argv[0]));
 }
 
-func TrObject_send(vm *RubyVM, self OBJ, argc int, argv []OBJ) OBJ {
+func Object_send(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
 	if argc == 0 { tr_raise(ArgumentError, "wrong number of arguments (%d for 1)", argc); }
-	method := TrObject_method(vm, self, argv[0]);
+	method := Object_method(vm, self, argv[0]);
 	if method == TR_NIL {
-		method = TrObject_method(vm, self, tr_intern("method_missing"));
+		method = Object_method(vm, self, tr_intern("method_missing"));
 		return method.call(vm, self, argc, argv, 0, 0);
 	} else {
 		return method.call(vm, self, argc-1, argv+1, 0, 0);
@@ -41,21 +45,21 @@ func TrObject_send(vm *RubyVM, self OBJ, argc int, argv []OBJ) OBJ {
 }
 
 // TODO respect namespace
-func TrObject_const_get(vm *RubyVM, OBJ self, OBJ name) OBJ {
-	k := kh_get(OBJ, vm.consts, name);
+func Object_const_get(vm *RubyVM, self, name *RubyObject) RubyObject {
+	k := kh_get(RubyObject, vm.consts, name);
 	if (k != kh_end(vm.consts)) return kh_value(vm.consts, k);
 	return TR_NIL;
 }
 
-func TrObject_const_set(vm *RubyVM, OBJ self, OBJ name, OBJ value) OBJ {
+func Object_const_set(vm *RubyVM, self, name, value *RubyObject) RubyObject {
 	int ret;
-	k := kh_put(OBJ, vm.consts, name, &ret);
-	if (!ret) kh_del(OBJ, vm.consts, k);
+	k := kh_put(RubyObject, vm.consts, name, &ret);
+	if (!ret) kh_del(RubyObject, vm.consts, k);
 	kh_value(vm.consts, k) = value;
 	return value;
 }
 
-func TrObject_add_singleton_method(vm *RubyVM, OBJ self, OBJ name, OBJ method) OBJ {
+func Object_add_singleton_method(vm *RubyVM, self, name, method *RubyObject) RubyObject {
 	object := *TR_COBJECT(self);
 	if (!TR_CCLASS(object.class).meta) { object.class := newMetaClass(vm, object.class); }
 	assert(TR_CCLASS(object.class).meta && "first class must be the metaclass");
@@ -63,7 +67,7 @@ func TrObject_add_singleton_method(vm *RubyVM, OBJ self, OBJ name, OBJ method) O
 	return method;
 }
 
-func TrObject_class(vm *RubyVM, OBJ self) OBJ {
+func Object_class(vm *RubyVM, self *RubyObject) RubyObject {
 	class := TR_CLASS(self);
 	// find the first non-metaclass
 	while (class && (!class.(Class) || TR_CCLASS(class).meta)) { class = TR_CCLASS(class).super; }
@@ -71,11 +75,11 @@ func TrObject_class(vm *RubyVM, OBJ self) OBJ {
 	return class;
 }
 
-func TrObject_object_id(vm *RubyVM, OBJ self) OBJ {
+func Object_object_id(vm *RubyVM, self *RubyObject) RubyObject {
 	return TR_INT2FIX((int)&self);
 }
 
-func TrObject_instance_eval(vm *RubyVM, OBJ self, OBJ code) OBJ {
+func Object_instance_eval(vm *RubyVM, self, code *RubyObject) RubyObject {
 	if block := Block_compile(vm, TR_STR_PTR(code), "<eval>", 0) {
 		return vm.run(block, self, TR_COBJECT(self).class, nil);
 	} else {
@@ -83,23 +87,23 @@ func TrObject_instance_eval(vm *RubyVM, OBJ self, OBJ code) OBJ {
 	}
 }
 
-func TrObject_inspect(vm *RubyVM, OBJ self) OBJ {
+func Object_inspect(vm *RubyVM, self *RubyObject) RubyObject {
 	name := TR_STR_PTR(tr_send2(tr_send2(self, "class"), "name"));
 	return tr_sprintf(vm, "#<%s:%p>", name, (void*)self);
 }
 
-func TrObject_preinit(vm *RubyVM) {
-	TR_INIT_CORE_CLASS(Object, /* ignored */ Object);
+func Object_preinit(vm *RubyVM) {
+	return vm.classes[TR_T_Object] = Object_const_set(vm, vm.self, tr_intern(Object), newClass(vm, tr_intern(Object), vm.classes[TR_T_Object]));
 }
 
-func TrObject_init(vm *RubyVM) {
-	c := TR_CORE_CLASS(Object);
-	tr_def(c, "class", TrObject_class, 0);
-	tr_def(c, "method", TrObject_method, 1);
-	tr_def(c, "method_missing", TrObject_method_missing, -1);
-	tr_def(c, "send", TrObject_send, -1);
-	tr_def(c, "object_id", TrObject_object_id, 0);
-	tr_def(c, "instance_eval", TrObject_instance_eval, 1);
-	tr_def(c, "to_s", TrObject_inspect, 0);
-	tr_def(c, "inspect", TrObject_inspect, 0);
+func Object_init(vm *RubyVM) {
+	c := vm.classes[TR_T_Object];
+	tr_def(c, "class", Object_class, 0);
+	tr_def(c, "method", Object_method, 1);
+	tr_def(c, "method_missing", Object_method_missing, -1);
+	tr_def(c, "send", Object_send, -1);
+	tr_def(c, "object_id", Object_object_id, 0);
+	tr_def(c, "instance_eval", Object_instance_eval, 1);
+	tr_def(c, "to_s", Object_inspect, 0);
+	tr_def(c, "inspect", Object_inspect, 0);
 }

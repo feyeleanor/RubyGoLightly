@@ -1,13 +1,15 @@
-#include <pcre.h>
-#include "tr.h"
-#include "internal.h"
+import (
+	"pcre";
+	"tr";
+	"internal";
+	)
 
 // Loosely based on http://vcs.pcre.org/viewvc/code/trunk/pcredemo.c
 
 // Translate this to use Go's stdlib regexp package
 
-func TrRegexp_new(vm *RubyVM, pattern *string, int options) OBJ {
-	r := *TR_INIT_CORE_OBJECT(Regexp);
+func TrRegexp_new(vm *RubyVM, pattern *string, options int) RubyObject {
+	r := Regexp{type: TR_T_Regexp, class: vm.classes[TR_T_Regexp], ivars: kh_init(RubyObject)};
 	error *string;
 	erroffset int;
   
@@ -19,20 +21,20 @@ func TrRegexp_new(vm *RubyVM, pattern *string, int options) OBJ {
 		nil);                /* use default character tables */
   
 	if (r.re == nil) {
-		TrRegex_free(vm, OBJ(r));
+		TrRegex_free(vm, r);
 		tr_raise(RegexpError, "compilation failed at offset %d: %s", erroffset, error);
 	}
-	return OBJ(r);
+	return r;
 }
 
-OBJ TrRegexp_compile(vm *RubyVM, OBJ self, OBJ pattern) {
+func TrRegexp_compile(vm *RubyVM, self, pattern *RubyObject) RubyObject {
 	return TrRegexp_new(vm, TR_STR_PTR(pattern), 0);
 }
 
 #define OVECCOUNT 30    /* should be a multiple of 3 */
 
-func TrRegexp_match(vm *RubyVM, OBJ self, OBJ str) OBJ {
-	r := *TR_CREGEXP(self);
+func TrRegexp_match(vm *RubyVM, self, str *RubyObject) RubyObject {
+	r := TR_CTYPE(self, Regexp);
 	subject := *TR_STR_PTR(str);
 	rc int;
 	ovector [OVECCOUNT]int;
@@ -65,14 +67,13 @@ func TrRegexp_match(vm *RubyVM, OBJ self, OBJ str) OBJ {
 	return data;
 }
 
-func TrRegex_free(vm *RubyVM, OBJ self) {
-	TrRegexp *r = (TrRegexp*)self;
+func TrRegex_free(vm *RubyVM, self *RubyObject) {
+	r := TrRegexp *(self);
 	pcre_free(r.re);
-	TR_FREE(r);
 }
 
 func TrRegexp_init(vm *RubyVM) {
-	c := TR_INIT_CORE_CLASS(Regexp, Object);
+	c := vm.classes[TR_T_Regexp] = Object_const_set(vm, vm.self, tr_intern(Regexp), newClass(vm, tr_intern(Regexp), vm.classes[TR_T_Object]));
 	tr_metadef(c, "new", TrRegexp_compile, 1);
 	tr_def(c, "match", TrRegexp_match, 1);
 }

@@ -1,58 +1,58 @@
-#include "tr.h"
-#include "internal.h"
+import(
+	"tr";
+	"internal";
+	)
 
-OBJ TrHash_new(vm *RubyVM) {
-  TrHash *h = TR_INIT_CORE_OBJECT(Hash);
-  h.kh = kh_init(OBJ);
-  return OBJ(h);
+func TrHash_new(vm *RubyVM) RubyObject {
+	return Hash{type: TR_T_Hash, class: vm.classes[TR_T_Hash], ivars: kh_init(RubyObject), kh: kh_init(RubyObject)};
 }
 
-OBJ TrHash_new2(vm *RubyVM, size_t n, OBJ items[]) {
-  TrHash *h = (TrHash *)TrHash_new(vm);
-  size_t i;
-  int ret;
+func TrHash_new2(vm *RubyVM, n size_t, items []RubyObject) RubyObject {
+  h := TrHash_new(vm);
+  i size_t;
+  ret int;
   for (i = 0; i < n; i+=2) {
-    khiter_t k = kh_put(OBJ, h.kh, items[i], &ret);
+    k := kh_put(RubyObject, h.kh, items[i], &ret);
     kh_value(h.kh, k) = items[i+1];
   }
-  return OBJ(h);
+  return h;
 }
 
-static OBJ TrHash_size(vm *RubyVM, OBJ self) {
-  TrHash *h = TR_CHASH(self);
+func TrHash_size(vm *RubyVM, self *RubyObject) RubyObject {
+  h := TR_CTYPE(self, Hash);
   return TR_INT2FIX(kh_size(h.kh));
 }
 
-/* TODO use Object#hash as the key */
-static OBJ TrHash_get(vm *RubyVM, OBJ self, OBJ key) {
-  TrHash *h = TR_CHASH(self);
-  khiter_t k = kh_get(OBJ, h.kh, key);
+// TODO use Object#hash as the key
+func TrHash_get(vm *RubyVM, self, key *RubyObject) RubyObject {
+  h := TR_CTYPE(self, Hash);
+  k := kh_get(RubyObject, h.kh, key);
   if (k != kh_end(h.kh)) return kh_value(h.kh, k);
   return TR_NIL;
 }
 
-static OBJ TrHash_set(vm *RubyVM, OBJ self, OBJ key, OBJ value) {
-  TrHash *h = TR_CHASH(self);
-  int ret;
-  khiter_t k = kh_put(OBJ, h.kh, key, &ret);
-  if (!ret) kh_del(OBJ, h.kh, k);
+func TrHash_set(vm *RubyVM, self, key, value *RubyObject) RubyObject {
+  h := TR_CTYPE(self, Hash);
+  ret int;
+  k := kh_put(RubyObject, h.kh, key, &ret);
+  if (!ret) kh_del(RubyObject, h.kh, k);
   kh_value(h.kh, k) = value;
   return value;
 }
 
-static OBJ TrHash_delete(vm *RubyVM, OBJ self, OBJ key) {
-  TrHash *h = TR_CHASH(self);
-  khiter_t k = kh_get(OBJ, h.kh, key);
+func TrHash_delete(vm *RubyVM, self, key *RubyObject) RubyObject {
+  h := TR_CTYPE(self, Hash);
+  k := kh_get(RubyObject, h.kh, key);
   if (k != kh_end(h.kh)) {
-    OBJ value = kh_value(h.kh, k);
-    kh_del(OBJ, h.kh, k);
+    value := kh_value(h.kh, k);
+    kh_del(RubyObject, h.kh, k);
     return value;
   }
   return TR_NIL;
 }
 
 void TrHash_init(vm *RubyVM) {
-  OBJ c = TR_INIT_CORE_CLASS(Hash, Object);
+  c := vm.classes[TR_T_Hash] = Object_const_set(vm, vm.self, tr_intern(Hash), newClass(vm, tr_intern(Hash), vm.classes[TR_T_Object]));
   tr_def(c, "length", TrHash_size, 0);
   tr_def(c, "size", TrHash_size, 0);
   tr_def(c, "[]", TrHash_get, 1);

@@ -31,39 +31,39 @@
  SystemExit
  fatal */
 
-OBJ TrException_new(vm *RubyVM, OBJ class, OBJ message) {
-  OBJ e = TrObject_alloc(vm, class);
+func TrException_new(vm *RubyVM, class, message *RubyObject) RubyObject {
+  e := Object_alloc(vm, class);
   tr_setivar(e, "@message", message);
   tr_setivar(e, "@backtrace", TR_NIL);
-  return OBJ(e);
+  return e;
 }
 
-static OBJ TrException_cexception(vm *RubyVM, OBJ self, int argc, OBJ argv[]) {
+func TrException_cexception(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) {
   if (argc == 0) return TrException_new(vm, self, TR_CCLASS(self).name);
   return TrException_new(vm, self, argv[0]);
 }
 
-static OBJ TrException_iexception(vm *RubyVM, OBJ self, int argc, OBJ argv[]) {
+func TrException_iexception(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
   if (argc == 0) return self;
   return TrException_new(vm, TR_CLASS(self), argv[0]);
 }
 
-static OBJ TrException_message(vm *RubyVM, OBJ self) {
+func TrException_message(vm *RubyVM, self *RubyObject) RubyObject {
   return tr_getivar(self, "@message");
 }
 
-OBJ TrException_backtrace(vm *RubyVM, OBJ self) {
+func TrException_backtrace(vm *RubyVM, self *RubyObject) RubyObject {
   return tr_getivar(self, "@backtrace");
 }
 
-OBJ TrException_set_backtrace(vm *RubyVM, OBJ self, OBJ backtrace) {
+func TrException_set_backtrace(vm *RubyVM, self, backtrace *RubyObject) RubyObject {
   return tr_setivar(self, "@backtrace", backtrace);
 }
 
-OBJ TrException_default_handler(vm *RubyVM, OBJ exception) {
+func TrException_default_handler(vm *RubyVM, exception *RubyObject) RubyObject {
   Class *c = TR_CCLASS(TR_CLASS(exception));
-  OBJ msg = tr_getivar(exception, "@message");
-  OBJ backtrace = tr_getivar(exception, "@backtrace");
+  msg := tr_getivar(exception, "@message");
+  backtrace := tr_getivar(exception, "@backtrace");
   
   printf("%s: %s\n", TR_STR_PTR(c.name), TR_STR_PTR(msg));
   if backtrace {
@@ -74,7 +74,7 @@ OBJ TrException_default_handler(vm *RubyVM, OBJ exception) {
 }
 
 void TrError_init(vm *RubyVM) {
-  OBJ c = vm.cException = tr_defclass("Exception", 0);
+  c := vm.cException = tr_defclass("Exception", 0);
   tr_metadef(c, "exception", TrException_cexception, -1);
   tr_def(c, "exception", TrException_iexception, -1);
   tr_def(c, "backtrace", TrException_backtrace, 0);

@@ -2,11 +2,18 @@
 
 #include <alloca.h>
 
+import (
+	"bytes";
+	)
+
 type Frame struct {
 	closure					*Closure;
 	method					*Method;				// current called method
-	stack, upvals			*OBJ;
-	self, class, filename	OBJ;
+	stack					*RubyObject;
+	upvals					*RubyObject;
+	self					*RubyObject;
+	class					*RubyObject;
+	filename				*RubyObject;
 	line					size_t;
 	previous				*Frame;
 }
@@ -33,7 +40,7 @@ type Frame struct {
   vm.frame = vm.frame.previous; \
 })
 
-func (self *Method) call(vm *RubyVM, receiver OBJ, argc int, args *OBJ, splat int, cl *Closure) OBJ {
+func (self *Method) call(vm *RubyVM, receiver *RubyObject, argc int, args []RubyObject, splat int, cl *Closure) RubyObject {
 	ret := TR_NIL;
 	Frame *f = nil;
 
