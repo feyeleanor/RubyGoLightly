@@ -1,7 +1,5 @@
 import "tr"
 
-/* Error management stuff */
-
 /* Exception
  NoMemoryError
  ScriptError
@@ -33,8 +31,8 @@ import "tr"
 
 func TrException_new(vm *RubyVM, class, message *RubyObject) RubyObject {
 	e := Object_alloc(vm, class);
-	tr_setivar(e, "@message", message);
-	tr_setivar(e, "@backtrace", TR_NIL);
+	e.ivars[TrSymbol_new(vm, "@message"] = message;
+	e.ivars[TrSymbol_new(vm, "@backtrace"] = TR_NIL;
 	return e;
 }
 
@@ -59,15 +57,15 @@ func TrException_iexception(vm *RubyVM, self *RubyObject, argc int, argv []RubyO
 }
 
 func TrException_message(vm *RubyVM, self *RubyObject) RubyObject {
-	return tr_getivar(self, "@message");
+	return self.ivars[TrSymbol_new(vm, "@message")] || TR_NIL;
 }
 
 func TrException_backtrace(vm *RubyVM, self *RubyObject) RubyObject {
-	return tr_getivar(self, "@backtrace");
+	return self.ivars[TrSymbol_new(vm, "@backtrace")] || TR_NIL;
 }
 
 func TrException_set_backtrace(vm *RubyVM, self, backtrace *RubyObject) RubyObject {
-	return tr_setivar(self, "@backtrace", backtrace);
+	self.ivars[TrSymbol_new(vm, "@backtrace")] = backtrace;
 }
 
 func TrException_default_handler(vm *RubyVM, exception *RubyObject) RubyObject {
@@ -82,9 +80,8 @@ func TrException_default_handler(vm *RubyVM, exception *RubyObject) RubyObject {
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + X));
 		return TR_UNDEF;
 	}
-	msg := tr_getivar(exception, "@message");
-	backtrace := tr_getivar(exception, "@backtrace");
-
+	msg := exception.ivars[TrSymbol_new(vm, "@message")] || TR_NIL;
+	backtrace := exception.ivars[TrSymbol_new(vm, "@backtrace")] || TR_NIL;
 	if !exception_class.name.(String) && !exception_class.name.(Symbol) {
 		vm.throw_reason = TR_THROW_EXCEPTION;
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + exception_class.name));
@@ -111,24 +108,24 @@ func TrException_default_handler(vm *RubyVM, exception *RubyObject) RubyObject {
 }
 
 func TrError_init(vm *RubyVM) {
-	c := vm.cException = tr_defclass("Exception", 0);
-	tr_metadef(c, "exception", TrException_cexception, -1);
-	tr_def(c, "exception", TrException_iexception, -1);
-	tr_def(c, "backtrace", TrException_backtrace, 0);
-	tr_def(c, "message", TrException_message, 0);
-	tr_def(c, "to_s", TrException_message, 0);
-  
-	vm.cScriptError = tr_defclass("ScriptError", vm.cException);
-	vm.cSyntaxError = tr_defclass("SyntaxError", vm.cScriptError);
-	vm.cStandardError = tr_defclass("StandardError", vm.cException);
-	vm.cArgumentError = tr_defclass("ArgumentError", vm.cStandardError);
-	vm.cRegexpError = tr_defclass("RegexpError", vm.cStandardError);
-	vm.cRuntimeError = tr_defclass("RuntimeError", vm.cStandardError);
-	vm.cTypeError = tr_defclass("TypeError", vm.cStandardError);
-	vm.cSystemCallError = tr_defclass("SystemCallError", vm.cStandardError);
-	vm.cIndexError = tr_defclass("IndexError", vm.cStandardError);
-	vm.cLocalJumpError = tr_defclass("LocalJumpError", vm.cStandardError);
-	vm.cSystemStackError = tr_defclass("SystemStackError", vm.cStandardError);
-	vm.cNameError = tr_defclass("NameError", vm.cStandardError);
-	vm.cNoMethodError = tr_defclass("NoMethodError", vm.cNameError);
+	c := vm.cException = Object_const_set(vm, vm.self, TrSymbol_new(vm, "Exception"), newClass(vm, TrSymbol_new(vm, "Exception"), 0));
+	Object_add_singleton_method(vm, c, TrSymbol_new(vm, "exception"), newMethod(vm, (TrFunc *)TrException_cexception, TR_NIL, -1));
+	c.add_method(vm, TrSymbol_new(vm, "exception"), newMethod(vm, (TrFunc *)TrException_iexception, TR_NIL, -1));
+	c.add_method(vm, TrSymbol_new(vm, "backtrace"), newMethod(vm, (TrFunc *)TrException_backtrace, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "message"), newMethod(vm, (TrFunc *)TrException_message, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "to_s"), newMethod(vm, (TrFunc *)TrException_message, TR_NIL, 0));
+
+	vm.cScriptError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "ScriptError"), newClass(vm, TrSymbol_new(vm, "ScriptError"), vm.cException));
+	vm.cSyntaxError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "SyntaxError"), newClass(vm, TrSymbol_new(vm, "SyntaxError"), vm.cScriptError));
+	vm.cStandardError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "StandardError"), newClass(vm, TrSymbol_new(vm, "StandardError"), vm.cException));
+	vm.cArgumentError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "ArgumentError"), newClass(vm, TrSymbol_new(vm, "ArgumentError"), vm.cStandardError));
+	vm.cRegexpError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "RegexpError"), newClass(vm, TrSymbol_new(vm, "RegexpError"), vm.cStandardError));
+	vm.cRuntimeError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "RuntimeError"), newClass(vm, TrSymbol_new(vm, "RuntimeError"), vm.cStandardError));
+	vm.cTypeError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "TypeError"), newClass(vm, TrSymbol_new(vm, "TypeError"), vm.cStandardError));
+	vm.cSystemCallError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "SystemCallError"), newClass(vm, TrSymbol_new(vm, "SystemCallError"), vm.cStandardError));
+	vm.cIndexError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "IndexError"), newClass(vm, TrSymbol_new(vm, "IndexError"), vm.cStandardError));
+	vm.cLocalJumpError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "LocalJumpError"), newClass(vm, TrSymbol_new(vm, "LocalJumpError"), vm.cStandardError));
+	vm.cSystemStackError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "SystemStackError"), newClass(vm, TrSymbol_new(vm, "SystemStackError"), vm.cStandardError));
+	vm.cNameError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "NameError"), newClass(vm, TrSymbol_new(vm, "NameError"), vm.cStandardError));
+	vm.cNoMethodError = Object_const_set(vm, vm.self, TrSymbol_new(vm, "NoMethodError"), newClass(vm, TrSymbol_new(vm, "NoMethodError"), vm.cNameError));
 }

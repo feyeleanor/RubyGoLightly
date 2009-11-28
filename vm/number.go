@@ -1,6 +1,5 @@
 import(
 	"tr";
-	"internal";
 )
 
 func TrFixnum_add(vm *RunyVM, self, other *RubyObject) RubyObject {
@@ -72,16 +71,16 @@ func TrFixnum_to_s(vm *RubyVM, self *RubyObject) RubyObject {
 }
 
 void TrFixnum_init(vm *RubyVM) {
-  c := vm.classes[TR_T_Fixnum] = Object_const_set(vm, vm.self, tr_intern(Fixnum), newClass(vm, tr_intern(Fixnum), vm.classes[TR_T_Object]));
-  tr_def(c, "+", TrFixnum_add, 1);
-  tr_def(c, "-", TrFixnum_sub, 1);
-  tr_def(c, "*", TrFixnum_mul, 1);
-  tr_def(c, "/", TrFixnum_div, 1);
-  tr_def(c, "==", TrFixnum_eq, 1);
-  tr_def(c, "!=", TrFixnum_eq, 1);
-  tr_def(c, "<", TrFixnum_lt, 1);
-  tr_def(c, "<=", TrFixnum_le, 1);
-  tr_def(c, ">", TrFixnum_gt, 1);
-  tr_def(c, ">=", TrFixnum_ge, 1);
-  tr_def(c, "to_s", TrFixnum_to_s, 0);
+	c := vm.classes[TR_T_Fixnum] = Object_const_set(vm, vm.self, TrSymbol_new(vm, Fixnum), newClass(vm, TrSymbol_new(vm, Fixnum), vm.classes[TR_T_Object]));
+	c.add_method(vm, TrSymbol_new(vm, "+"), newMethod(vm, (TrFunc *)TrFixnum_add, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "-"), newMethod(vm, (TrFunc *)TrFixnum_sub, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "*"), newMethod(vm, (TrFunc *)TrFixnum_mul, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "/"), newMethod(vm, (TrFunc *)TrFixnum_div, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "=="), newMethod(vm, (TrFunc *)TrFixnum_eq, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "!="), newMethod(vm, (TrFunc *)TrFixnum_eq, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "<"), newMethod(vm, (TrFunc *)TrFixnum_lt, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "<="), newMethod(vm, (TrFunc *)TrFixnum_le, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, ">"), newMethod(vm, (TrFunc *)TrFixnum_gt, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, ">="), newMethod(vm, (TrFunc *)TrFixnum_ge, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "to_s"), newMethod(vm, (TrFunc *)TrFixnum_to_s, TR_NIL, 0));
 }

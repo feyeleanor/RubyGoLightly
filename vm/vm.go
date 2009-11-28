@@ -9,12 +9,27 @@ import (
 	"bytes";
 	"tr";
 	"opcode";
-	"internal";
 	"call";
 )
 
 type RubyObject interface {
 	
+}
+
+type Frame struct {
+	closure					*Closure;
+	method					*Method;				// current called method
+	stack					*RubyObject;
+	upvals					*RubyObject;
+	self					*RubyObject;
+	class					*RubyObject;
+	filename				*RubyObject;
+	line					size_t;
+	previous				*Frame;
+}
+
+func (vm *RubyVM) newFrame(self, class, closure *RubyObject) Frame {
+	return Frame{ closure: closure, self: self, class: class, previous: vm.frame }
 }
 
 type RubyVM struct {
@@ -79,7 +94,7 @@ func (vm *RubyVM) lookup(block *Block, receiver, msg *RubyObject, ip *MachineOP)
 	s.method = method;
 	s.message = msg;
 	if method == TR_NIL {
-		s.method = Object_method(vm, receiver, tr_intern("method_missing"));
+		s.method = Object_method(vm, receiver, TrSymbol_new(vm, "method_missing"));
 		s.method_missing = 1;
 	}
   
@@ -104,7 +119,7 @@ func (vm *RubyVM) defclass(name *RubyObject, block *Block, module int, super *Ru
 	if !mod {
 		// new module/class
 		if module {
-			mod := newModule(vm, name);
+			mod := vm.newModule(name);
 		} else {
 			mod := newClass(vm, name, super ? super : vm.classes[TR_T_Object]);
 		}
@@ -114,9 +129,13 @@ func (vm *RubyVM) defclass(name *RubyObject, block *Block, module int, super *Ru
 
 	// push a frame
 	vm.cf++;
-	if vm.cf >= TR_MAX_FRAMES { tr_raise(SystemStackError, "Stack overflow"); }
+	if vm.cf >= TR_MAX_FRAMES {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cSystemStackError, tr_sprintf(vm, "Stack overflow"));
+		return TR_UNDEF;
+	}
 
-	frame := Frame{previous: vm.frame, method: nil, filename: nil, line: 0, self: mod, class: mod, closure: nil}
+	frame := newFrame(mod, mod, nil);
 	if vm.cf == 0 { vm.top_frame = frame; }
 	vm.frame = frame;
 	vm.throw_reason = vm.throw_value = 0;
@@ -133,7 +152,11 @@ func (vm *RubyVM) defclass(name *RubyObject, block *Block, module int, super *Ru
 func (vm *RubyVM) interpret_method(self *RubyObject, args []RubyObject) RubyObject {
 	assert(vm.frame.method);
 	block := Block *(vm.frame.method.data);
-	if args.Len() != block.argc { tr_raise(ArgumentError, "wrong number of arguments (%d for %lu)", args.Len(), block.argc); }
+	if args.Len() != block.argc {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cArgumentError, tr_sprintf(vm, "wrong number of arguments (%d for %lu)", args.Len(), block.argc));
+		return TR_UNDEF;
+	}
 	return vm.interpret(vm, vm.frame, block, 0, args, 0);
 }
 
@@ -141,8 +164,16 @@ func (vm *RubyVM) interpret_method_with_defaults(self *RubyObject, args []RubyOb
 	assert(vm.frame.method);
 	block := Block *(vm.frame.method.data);
 	req_argc := block.argc - block.defaults.Len();
-	if args.Len() < req_argc { tr_raise(ArgumentError, "wrong number of arguments (%d for %d)", args.Len(), req_argc); }
-	if args.Len() > block.argc { tr_raise(ArgumentError, "wrong number of arguments (%d for %lu)", args.Len(), b.argc); }
+	if args.Len() < req_argc {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cArgumentError, tr_sprintf(vm, "wrong number of arguments (%d for %d)", args.Len(), req_argc));
+		return TR_UNDEF;
+	}
+	if args.Len() > block.argc {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cArgumentError, tr_sprintf(vm, "wrong number of arguments (%d for %lu)", args.Len(), b.argc));
+		return TR_UNDEF;
+	}
 	// index in defaults table or -1 for none
 	if (i := args.Len() - req_argc - 1) < 0 {
 		return vm.interpret(vm.frame, block, 0, args, 0);
@@ -156,8 +187,12 @@ func (vm *RubyVM) interpret_method_with_splat(self *RubyObject, args []RubyObjec
 	block := Block *(vm.frame.method.data);
 	// TODO support defaults
 	assert(block.defaults.Len() == 0 && "defaults with splat not supported for now");
-	if args.Len() < b.argc - 1 { tr_raise(ArgumentError, "wrong number of arguments (%d for %lu)", args.Len(), block.argc - 1); }
-	argv[block.argc - 1] = newArray3(vm, args.Len() - block.argc + 1, &argv[block.argc - 1]);
+	if args.Len() < b.argc - 1 {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cArgumentError, tr_sprintf(vm, "wrong number of arguments (%d for %lu)", args.Len(), block.argc -1));
+		return TR_UNDEF;
+	}
+	argv[block.argc - 1] = vm.newArray3(args.Len() - block.argc + 1, &argv[block.argc - 1]);
 	return vm.interpret(vm.frame, block, 0, args[0:block.argc - 1], 0);
 }
 
@@ -179,15 +214,23 @@ func (vm *RubyVM) defmethod(frame *Frame, name *RubyObject, block *Block, meta b
 
 func (vm *RubyVM) yield(frame *Frame, args []RubyObject) RubyObject {
 	closure := frame.closure;
-	if !closure { tr_raise(LocalJumpError, "no block given"); }
+	if !closure {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cLocalJumpError, tr_sprintf(vm, "no block given"));
+		return TR_UNDEF;
+	}
 
 	// push a frame
 	vm.cf++;
-	if vm.cf >= TR_MAX_FRAMES { tr_raise(SystemStackError, "Stack overflow"); }
+	if vm.cf >= TR_MAX_FRAMES {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cSystemStackError, tr_sprintf(vm, "Stack overflow"));
+		return TR_UNDEF;
+	}
 
-	new_frame := Frame{previous: vm.frame, method: nil, filename: nil, line: 0, self: closure.self, class: closure.class, closure: closure.parent}
-	if vm.cf == 0 { vm.top_frame = new_frame; }
-	vm.frame = new_frame;
+	closed_frame := newFrame(closure.self, closure.class, closure.parent);
+	if vm.cf == 0 { vm.top_frame = closed_frame; }
+	vm.frame = closed_frame;
 	vm.throw_reason = vm.throw_value = 0;
 
 	// execute BODY inside the frame
@@ -245,7 +288,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				stack[i.A] = i.B
 
 			case TR_OP_NEWARRAY:
-				stack[i.A] = newArray3(vm, i.B, &stack[i.A + 1])
+				stack[i.A] = vm.newArray3(i.B, &stack[i.A + 1])
 
 			case TR_OP_NEWHASH:
 				stack[i.A] = TrHash_new2(vm, i.B, &stack[i.A + 1])
@@ -275,16 +318,16 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				stack[i.A] = *(upvals[i.B].value)
 
     		case TR_OP_SETIVAR:
-				TR_KH_SET(Object *(frame.self).ivars, k[i.Get_Bx()], stack[i.A])
+				frame.self.ivars[k[i.Get_Bx()]] = stack[i.A];
 
     		case TR_OP_GETIVAR:
-				stack[i.A] = TR_KH_GET(Object *(frame.self).ivars, k[i.Get_Bx()])
+				stack[i.A] = frame.self.ivars[k[i.Get_Bx()]];
 
     		case TR_OP_SETCVAR:
-				TR_KH_SET(Object *(frame.class).ivars, k[i.Get_Bx()], stack[i.A])
+				frame.class.ivars[k[i.Get_Bx()]] = stack[i.A];
 
     		case TR_OP_GETCVAR:
-				stack[i.A] = TR_KH_GET(Object*(frame.class).ivars, k[i.Get_Bx()])
+				stack[i.A] := frame.class.ivars[k[i.Get_Bx]] || TR_NIL;
 
     		case TR_OP_SETCONST:
 				Object_const_set(vm, frame.self, k[i.Get_Bx()], stack[i.A])
@@ -293,11 +336,11 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				stack[i.A] = Object_const_get(vm, frame.self, k[i.Get_Bx()])
 
     		case TR_OP_SETGLOBAL:
-				TR_KH_SET(vm.globals, k[i.Get_Bx()], stack[i.A])
+				vm.globals[k[i.Get_Bx()]] = stack[i.A];
 
     		case TR_OP_GETGLOBAL:
-				stack[i.A] = TR_KH_GET(vm.globals, k[i.Get_Bx()])
-    
+				stack[i.A] = vm.globals[k[i.Get_Bx()]] || TR_NIL;
+
     		// method calling
     		case TR_OP_LOOKUP:
 				if RubyObject(call = TrCallSite *(vm.lookup(block, stack[i.A], k[i.Get_Bx()], ip))) == TR_UNDEF { return TR_UNDEF; }
@@ -406,7 +449,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
  				if stack[i.A] == TR_NIL || stack[i.A] == TR_FALSE { ip += i.Get_sBx(); }
 
     		// arithmetic optimizations
-    		// TODO cache lookup in tr_send and force send if method was redefined
+    		// TODO cache lookup and force send if method was redefined
 			case TR_OP_ADD:
 				if i.B & (1 << (SIZE_B - 1) {
 					rb := k[i.B & ~0x100]
@@ -423,7 +466,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				if TR_IS_FIX(rb) {
 					stack[i.A] = TR_INT2FIX(TR_FIX2INT(rb) + TR_FIX2INT(rc))
 				} else {
-					stack[i.A] = tr_send(rb, vm.sADD, rc)
+					stack[i.A] = Object_send(vm, rb, 2, { vm.sADD, rc });
 				}
 
 			case TR_OP_SUB:
@@ -442,7 +485,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 				if TR_IS_FIX(rb) {
 					stack[i.A] = TR_INT2FIX(TR_FIX2INT(rb) - TR_FIX2INT(rc))
 				} else {
-					stack[i.A] = tr_send(rb, vm.sSUB, rc)
+					stack[i.A] = Object_send(vm, rb, 2, { vm.sSUB, rc });
 				}
 
 			case TR_OP_LT:
@@ -466,7 +509,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 					}
 
 				} else {
-					stack[i.A] = tr_send(rb, vm.sLT, rc)
+					stack[i.A] = Object_send(vm, rb, 2, { vm.sLT, rc } );
 				}
 
 			case TR_OP_NEG:
@@ -483,7 +526,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 					} else {
 						rc := stack[i.C]
 					}
-					stack[i.A] = tr_send(rb, vm.sNEG, rc)
+					stack[i.A] = Object_send(vm, rb, 2, { vm.sNEG, rc });
 				}
 
 			case TR_OP_NOT:
@@ -512,7 +555,7 @@ func (vm *RubyVM) TrVM_interpret(frame *Frame, block *Block, start, args []RubyO
 
 /* returns the backtrace of the current call frames */
 func (vm *RubyVM) backtrace() RubyObject {
-	backtrace := newArray(vm);
+	backtrace := vm.newArray();
 	if vm.frame {
 		// skip a frame since it's the one doing the raising
 		frame := vm.frame.previous;
@@ -539,7 +582,7 @@ func (vm *RubyVM) backtrace() RubyObject {
 			} else {
 				context := tr_sprintf(vm, "\tfrom %s:%lu", filename, f.line);
 			}
-			backtrace.kv.Push(context);
+			backtrace.Push(context);
 			frame = frame.previous;
 		}
 	}
@@ -562,24 +605,27 @@ func (vm *RubyVM) eval(code *string, filename *string) RubyObject {
 
 func (vm *RubyVM) load(filename *string) RubyObject {
 	stats = new(stat);
-	if stat(filename, &stats) == -1 { tr_raise_errno(filename); }
-
-	if fp := fopen(filename, "rb") {
-		s := make([]byte, stats.st_size + 1);
-		if fread(s, 1, stats.st_size, fp) == stats.st_size { return vm.eval(s, filename); }
-		tr_raise_errno(filename);
-	} else {
-		tr_raise_errno(filename);
+	if stat(filename, &stats) != -1 {
+		if fp := fopen(filename, "rb") {
+			s := make([]byte, stats.st_size + 1);
+			if fread(s, 1, stats.st_size, fp) == stats.st_size { return vm.eval(s, filename); }
+		}
 	}
-	return TR_NIL;
+	vm.throw_reason = TR_THROW_EXCEPTION;
+	vm.throw_value = TrException_new(vm, vm.cSystemCallError, tr_sprintf(vm, "%s: %s", strerror(errno), filename);
+	return TR_UNDEF;
 }
 
 func (vm *RubyVM) run(block *Block, self, class *RubyObject, args []RubyObject) RubyObject {
 	// push a frame
 	vm.cf++;
-	if vm.cf >= TR_MAX_FRAMES { tr_raise(SystemStackError, "Stack overflow"); }
+	if vm.cf >= TR_MAX_FRAMES {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cSystemStackError, tr_sprintf(vm, "Stack overflow");
+		return TR_UNDEF;
+	}
 
-	frame := Frame{self: self, method: nil, class: class, previous: vm.frame, closure: false, filename: nil, line:  0};
+	frame := newFrame(self, class, nil);
 	if vm.cf == 0 { vm.top_frame = frame; }
 	vm.frame = frame;
 	vm.throw_reason = vm.throw_value = 0;
@@ -594,9 +640,9 @@ func (vm *RubyVM) run(block *Block, self, class *RubyObject, args []RubyObject) 
 
 func newRubyVM() *RubyVM {
 	vm := new(RubyVM);
-	vm.symbols = kh_init(str);
-	vm.globals = kh_init(RubyObject);
-	vm.consts = kh_init(RubyObject);
+	vm.symbols = make(map[string] string);
+	vm.globals = make(map[string] RubyObject);
+	vm.consts = make(map[string] RubyObject);
 	vm.debug = 0;
   
 	// bootstrap core classes, order is important here, so careful, mkay?
@@ -621,8 +667,8 @@ func newRubyVM() *RubyVM {
 	objectc.class = newMetaClass(vm, objectc.class);
   
  	// Some symbols are created before Object, so make sure all have proper class.
-	TR_KH_EACH(vm.symbols, i, sym, { Object*(sym).class = RubyObject(symbolc); });
-  
+	for key, value := range vm.symbols { value.class = RubyObject(symbolc); }
+
 	// bootstrap rest of core classes, order is no longer important here
 	Object_init(vm);
 	TrError_init(vm);
@@ -640,11 +686,11 @@ func newRubyVM() *RubyVM {
 	vm.cf = -1;
   
  	// cache some commonly used values
-	vm.sADD = tr_intern("+");
-	vm.sSUB = tr_intern("-");
-	vm.sLT = tr_intern("<");
-	vm.sNEG = tr_intern("@-");
-	vm.sNOT = tr_intern("!");
+	vm.sADD = TrSymbol_new(vm, "+");
+	vm.sSUB = TrSymbol_new(vm, "-");
+	vm.sLT = TrSymbol_new(vm, "<");
+	vm.sNEG = TrSymbol_new(vm, "@-");
+	vm.sNOT = TrSymbol_new(vm, "!");
   
 	if vm.load("lb/boot.rb") == TR_UNDEF && vm.throw_reason == TR_THROW_EXCEPTION {
 		TrException_default_handler(vm, vm.throw_value));

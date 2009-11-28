@@ -1,7 +1,6 @@
 %{
 #include <stdlib.h>
 #include "tr.h"
-#include "internal.h"
 
 /*#define YY_DEBUG 1*/
 
@@ -10,39 +9,38 @@
 
 charbuf *string;
 sbuf *string;
-size_t nbuf;
-Compiler *compiler;
+nbuf size_t;
+compiler *Compiler;
 
-#define YY_INPUT(buf, result, max_size) { \
-  int yyc; \
-  if (charbuf && *charbuf != '\0') \
-    yyc= *charbuf++; \
-  else \
-    yyc= EOF; \
-  result= (EOF == yyc) ? 0 : (*(buf)= yyc, 1); \
+#define YY_INPUT(buf, result, max_size) {	\
+	yyc int;	\
+	if charbuf && *charbuf != '\0' {	\
+		yyc= *charbuf++;	\
+	} else {	\
+		yyc= EOF;	\
+	}	\
+	if EOF == yyc {	\
+		result := 0;	\
+	} else {	\
+		(*(buf)= yyc, 1);	\
+	}	\
 }
 
-/* TODO grow buffer */
-#define STRING_MAX   4096
-#define STRING_START sbuf = make([]byte, STRING_MAX); nbuf = 0
-#define STRING_PUSH(P,L) \
-	assert(nbuf + (L) < 4096); \
-	memcpy(sbuf + nbuf, P, sizeof(char) * L); \
-	nbuf += (L)
-
+// TODO grow buffer
+#define STRING_START sbuf = make([]byte, 4096); nbuf = 0
 %}
 
-Root      = s:Stmts EOF                     { compiler.node = NODE(ROOT, s) }
+Root      = s:Stmts EOF                     { compiler.node = newASTNode(compiler.vm, NODE_ROOT, s, 0, 0, compiler.line) }
 
 Stmts     = SEP*
-            - head:Stmt Comment?            { head = NODES(head) }
-            ( SEP - tail:Stmt Comment?      { PUSH_NODE(head, tail) }
+            - head:Stmt Comment?            { head = compiler.vm.newArray2(1, head) }
+            ( SEP - tail:Stmt Comment?      { head.Push(tail) }
             | SEP - Comment
             )* SEP?                         { $$ = head }
-          | SEP+                            { $$ = NODES_N(0) }
+          | SEP+                            { $$ = compiler.vm.newArray2(0) }
 
 OptStmts  = Stmts
-          | - SEP?                          { $$ = NODES_N(0) }
+          | - SEP?                          { $$ = compiler.vm.newArray2(0) }
 
 Stmt      = While
           | Until
@@ -69,16 +67,16 @@ Comment   = - '#' (!EOL .)*
 
 Call      =                                 { block = rcv = 0 }
             ( rcv:Value '.'
-            )? ( rmsg:Message '.'           { rcv = NODE2(SEND, rcv, rmsg) }
+            )? ( rmsg:Message '.'           { rcv = newASTNode(compiler.vm, NODE_SEND, rcv, rmsg, 0, compiler.line) }
                )* msg:Message
-                  - block:Block?            { $$ = NODE3(SEND, rcv, msg, block) }
+                  - block:Block?            { $$ = newASTNode(compiler.vm, NODE_SEND, rcv, msg, block, compiler.line) }
 
 # TODO refactor head part w/ Call maybe eh?
 AsgnCall   =                                { rcv = 0 }
             ( rcv:Value '.'
-            )? ( rmsg:Message '.'           { rcv = NODE2(SEND, rcv, rmsg) }
+            )? ( rmsg:Message '.'           { rcv = newASTNode(compiler.vm, NODE_SEND, rcv, rmsg, 0, compiler.line) }
                )* msg:ID - asg:ASSIGN
-                  - val:Stmt                { vm = RubyVM *(yyvm); $$ = NODE2(SEND, rcv, NODE2(MSG, SYMCAT(msg, asg), NODES(NODE(ARG, val)))) }
+                  - val:Stmt                { vm = RubyVM *(yyvm); $$ = newASTNode(compiler.vm, NODE_SEND, rcv, newASTNode(compiler.vm, NODE_MSG, TrSymbol_new(vm, TrString *(msg).ptr, TrString *(asg).ptr), compiler.vm.newArray2(1, newASTNode(compiler.vm, NODE_ARG, val, 0, 0, compiler.line)), 0, compiler.line), 0, compiler.line) }
 
 Receiver  = (                               { rcv = 0 }
               rcv:Call
@@ -86,142 +84,147 @@ Receiver  = (                               { rcv = 0 }
             )                               { $$ = rcv }
 
 SpecCall  = rcv:Receiver '[' args:Args ']'  
-            - ASSIGN - val:Stmt             { PUSH_NODE(args, NODE(ARG, val)); $$ = NODE2(SEND, rcv, NODE2(MSG, TrSymbol_new(yyvm, "[]="), args)) }
-          | rcv:Receiver '[' args:Args ']'  { $$ = NODE2(SEND, rcv, NODE2(MSG, TrSymbol_new(yyvm, "[]"), args)) }
+            - ASSIGN - val:Stmt             { args.Push(newASTNode(compiler.vm, NODE_ARG, val, 0, 0, compiler.line)); $$ = newASTNode(compiler.vm, NODE_SEND, rcv, newASTNode(compiler.vm, NODE_MSG, TrSymbol_new(yyvm, "[]="), args, 0, compiler.line), 0, compiler.line) }
+          | rcv:Receiver '[' args:Args ']'  { $$ = newASTNode(compiler.vm, NODE_SEND, rcv, newASTNode(compiler.vm, NODE_MSG, TrSymbol_new(yyvm, "[]"), args, 0, compiler.line), 0, compiler.line) }
 
 BinOp     = ( rcv:SpecCall | rcv:Receiver )
             -
             (
-              '&&' - arg:Expr               { $$ = NODE2(AND, rcv, arg) }
-            | '||' - arg:Expr               { $$ = NODE2(OR, rcv, arg) }
-            | '+' - arg:Expr                { $$ = NODE2(ADD, rcv, arg) }
-            | '-' - arg:Expr                { $$ = NODE2(SUB, rcv, arg) }
-            | '<' - arg:Expr                { $$ = NODE2(LT, rcv, arg) }
-            | op:BINOP - arg:Expr           { $$ = NODE2(SEND, rcv, NODE2(MSG, op, NODES(NODE(ARG, arg)))) }
+              '&&' - arg:Expr               { $$ = newASTNode(compiler.vm, NODE_AND, rcv, arg, 0, compiler.line) }
+            | '||' - arg:Expr               { $$ = newASTNode(compiler.vm, NODE_OR, rcv, arg, 0, compiler.line) }
+            | '+' - arg:Expr                { $$ = newASTNode(compiler.vm, NODE_ADD, rcv, arg, 0, compiler.line) }
+            | '-' - arg:Expr                { $$ = newASTNode(compiler.vm, NODE_SUB, rcv, arg, 0, compiler.line) }
+            | '<' - arg:Expr                { $$ = newASTNode(compiler.vm, NODE_LT, rcv, arg, 0, compiler.line) }
+            | op:BINOP - arg:Expr           { $$ = newASTNode(compiler.vm, NODE_SEND, rcv, newASTNode(compiler.vm, NODE_MSG, op, compiler.vm.newArray2(1, newASTNode(compiler.vm, NODE_ARG, arg, 0, 0, compiler.line)), 0, compiler.line), 0, compiler.line) }
             ) 
 
-UnaryOp   = '-' rcv:Expr                    { $$ = NODE(NEG, rcv) }
-          | '!' rcv:Expr                    { $$ = NODE(NOT, rcv) }
+UnaryOp   = '-' rcv:Expr                    { $$ = newASTNode(compiler.vm, NODE_NEG, rcv, 0, 0, compiler.line) }
+          | '!' rcv:Expr                    { $$ = newASTNode(compiler.vm, NODE_NOT, rcv, 0, 0, compiler.line) }
 
 Message   = name:ID                         { args = 0 }
               ( '(' args:Args? ')'
               | SPACE args:Args
-              )?                            { $$ = NODE2(MSG, name, args) }
+              )?                            { $$ = newASTNode(compiler.vm, NODE_MSG, name, args, 0, compiler.line) }
 
-Args      = - head:Expr -                   { head = NODES(NODE(ARG, head)) }
-            ( ',' - tail:Expr -             { PUSH_NODE(head, NODE(ARG, tail)) }
-            )* ( ',' - '*' splat:Expr -     { PUSH_NODE(head, NODE2(ARG, splat, 1)) }
+Args      = - head:Expr -                   { head = compiler.vm.newArray2(1, newASTNode(compiler.vm, NODE_ARG, head, 0, 0, compiler.line)) }
+            ( ',' - tail:Expr -             { head.Push(newASTNode(compiler.vm, NODE_ARG, tail, 0, 0, compiler.line)) }
+            )* ( ',' - '*' splat:Expr -     { head.Push(newASTNode(compiler.vm, NODE_ARG, splat, 1, 0, compiler.line)) }
                )?                           { $$ = head }
-          | - '*' splat:Expr -              { $$ = NODES(NODE2(ARG, splat, 1)) }
+          | - '*' splat:Expr -              { $$ = compiler.vm.newArray2(1, newASTNode(compiler.vm, NODE_ARG, splat, 1, 0, compiler.line)) }
 
 Block     = 'do' SEP
               - body:OptStmts -
-            'end'                           { $$ = NODE(BLOCK, body) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_BLOCK, body, 0, 0, compiler.line) }
           | 'do' - '|' params:Params '|' SEP
               - body:OptStmts -
-            'end'                           { $$ = NODE2(BLOCK, body, params) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_BLOCK, body, params, 0, compiler.line) }
           # FIXME this might hang the parser and is very slow.
           # Clash with Hash for sure.
-          #| '{' - body:OptStmts - '}'       { $$ = NODE(BLOCK, body) }
+          #| '{' - body:OptStmts - '}'       { $$ = newASTNode(compiler.vm, NODE_BLOCK, body, 0, 0, compiler.line) }
           #| '{' - '|' params:Params '|'
-          #  - body:OptStmts - '}'           { $$ = NODE2(BLOCK, body, params) }
+          #  - body:OptStmts - '}'           { $$ = newASTNode(compiler.vm, NODE_BLOCK, body, params, 0, compiler.line) }
 
-Assign    = name:ID - ASSIGN - val:Stmt     { $$ = NODE2(ASSIGN, name, val) }
-          | name:CONST - ASSIGN - val:Stmt  { $$ = NODE2(SETCONST, name, val) }
-          | name:IVAR - ASSIGN - val:Stmt   { $$ = NODE2(SETIVAR, name, val) }
-          | name:CVAR - ASSIGN - val:Stmt   { $$ = NODE2(SETCVAR, name, val) }
-          | name:GLOBAL - ASSIGN - val:Stmt { $$ = NODE2(SETGLOBAL, name, val) }
+Assign    = name:ID - ASSIGN - val:Stmt     { $$ = newASTNode(compiler.vm, NODE_ASSIGN, name, val, 0, compiler.line) }
+          | name:CONST - ASSIGN - val:Stmt  { $$ = newASTNode(compiler.vm, NODE_SETCONST, name, val, 0, compiler.line) }
+          | name:IVAR - ASSIGN - val:Stmt   { $$ = newASTNode(compiler.vm, NODE_SETIVAR, name, val, 0, compiler.line) }
+          | name:CVAR - ASSIGN - val:Stmt   { $$ = newASTNode(compiler.vm, NODE_SETCVAR, name, val, 0, compiler.line) }
+          | name:GLOBAL - ASSIGN - val:Stmt { $$ = newASTNode(compiler.vm, NODE_SETGLOBAL, name, val, 0, compiler.line) }
 
 While     = 'while' SPACE cond:Expr SEP
               body:Stmts -
-            'end'                           { $$ = NODE2(WHILE, cond, body) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_WHILE, cond, body, 0, compiler.line) }
 
 Until     = 'until' SPACE cond:Expr SEP
               body:Stmts -
-            'end'                           { $$ = NODE2(UNTIL, cond, body) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_UNTIL, cond, body, 0, compiler.line) }
 
 If        = 'if' SPACE cond:Expr SEP        { else_body = 0 }
               body:Stmts -
             else_body:Else?
-            'end'                           { $$ = NODE3(IF, cond, body, else_body) }
-          | body:Expr - 'if' - cond:Expr    { $$ = NODE2(IF, cond, NODES(body)) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_IF, cond, body, else_body, compiler.line) }
+          | body:Expr - 'if' - cond:Expr    { $$ = newASTNode(compiler.vm, NODE_IF, cond, compiler.vm.newArray2(1, body), 0, compiler.line) }
 
 Unless    = 'unless' SPACE cond:Expr SEP    { else_body = 0 }
               body:Stmts -
             else_body:Else?
-            'end'                           { $$ = NODE3(UNLESS, cond, body, else_body) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_UNLESS, cond, body, else_body, compiler.line) }
           | body:Expr -
-              'unless' - cond:Expr          { $$ = NODE2(UNLESS, cond, NODES(body)) }
+              'unless' - cond:Expr          { $$ = newASTNode(compiler.vm, NODE_UNLESS, cond, compiler.vm.newArray2(1, body), 0, compiler.line) }
 
 Else      = 'else' SEP - body:Stmts -       { $$ = body }
 
-Method    = rcv:ID '.' name:METHOD          { $$ = NODE2(METHOD, NODE2(SEND, 0, NODE(MSG, rcv)), name) }
-          | rcv:Value '.' name:METHOD       { $$ = NODE2(METHOD, rcv, name) }
-          | name:METHOD                     { $$ = NODE2(METHOD, 0, name) }
+Method    = rcv:ID '.' name:METHOD          { $$ = newASTNode(compiler.vm, NODE_METHOD, newASTNode(compiler.vm, NODE_SEND, 0, newASTNode(compiler.vm, NODE_MSG, rcv, 0, 0, compiler.line), 0, compiler.line), name, 0, compiler.line) }
+          | rcv:Value '.' name:METHOD       { $$ = newASTNode(compiler.vm, NODE_METHOD, rcv, name, 0, compiler.line) }
+          | name:METHOD                     { $$ = newASTNode(compiler.vm, NODE_METHOD, 0, name, 0, compiler.line) }
 
 Def       = 'def' SPACE method:Method       { params = 0 }
             (- '(' params:Params? ')')? SEP
               body:OptStmts -
-            'end'                           { $$ = NODE3(DEF, method, params ? params : NODES_N(0), body) }
+            'end'                           {	if params > 0 {
+													$$ := newASTNode(compiler.vm, NODE_DEF, method, params, body, compiler.line);
+												} else {
+													$$ := newASTNode(compiler.vm, NODE_DEF, method, compiler.vm.newArray2(0), body, compiler.line);
+												}
+											}
 
-Params    = head:Param                      { head = NODES(head) }
-            ( ',' tail:Param                { PUSH_NODE(head, tail) }
+Params    = head:Param                      { head = compiler.vm.newArray2(1, head) }
+            ( ',' tail:Param                { head.Push(tail) }
             )*                              { $$ = head }
 
-Param     = - name:ID - '=' - def:Expr      { $$ = NODE3(PARAM, name, 0, def) }
-          | - name:ID -                     { $$ = NODE(PARAM, name) }
-          | - '*' name:ID -                 { $$ = NODE2(PARAM, name, 1) }
+Param     = - name:ID - '=' - def:Expr      { $$ = newASTNode(compiler.vm, NODE_PARAM, name, 0, def, compiler.line) }
+          | - name:ID -                     { $$ = newASTNode(compiler.vm, NODE_PARAM, name, 0, 0, compiler.line) }
+          | - '*' name:ID -                 { $$ = newASTNode(compiler.vm, NODE_PARAM, name, 1, 0, compiler.line) }
 
 Class     = 'class' SPACE name:CONST        { super = 0 }
             (- '<' - super:CONST)? SEP
               body:OptStmts -
-            'end'                           { $$ = NODE3(CLASS, name, super, body) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_CLASS, name, super, body, compiler.line) }
 
 Module    = 'module' SPACE name:CONST SEP
               body:OptStmts -
-            'end'                           { $$ = NODE3(MODULE, name, 0, body) }
+            'end'                           { $$ = newASTNode(compiler.vm, NODE_MODULE, name, 0, body, compiler.line) }
 
-Range     = s:Receiver - '..' - e:Expr      { $$ = NODE3(RANGE, s, e, 0) }
-          | s:Receiver - '...' - e:Expr     { $$ = NODE3(RANGE, s, e, 1) }
+Range     = s:Receiver - '..' - e:Expr      { $$ = newASTNode(compiler.vm, NODE_RANGE, s, e, 0, compiler.line) }
+          | s:Receiver - '...' - e:Expr     { $$ = newASTNode(compiler.vm, NODE_RANGE, s, e, 1, compiler.line) }
 
-Yield     = 'yield' SPACE args:AryItems     { $$ = NODE(YIELD, args) }
-          | 'yield' '(' args:AryItems ')'   { $$ = NODE(YIELD, args) }
-          | 'yield'                         { $$ = NODE(YIELD, NODES_N(0)) }
+Yield     = 'yield' SPACE args:AryItems     { $$ = newASTNode(compiler.vm, NODE_YIELD, args, 0, 0, compiler.line) }
+          | 'yield' '(' args:AryItems ')'   { $$ = newASTNode(compiler.vm, NODE_YIELD, args, 0, 0, compiler.line) }
+          | 'yield'                         { $$ = newASTNode(compiler.vm, NODE_YIELD, compiler.vm.newArray2(0), 0, 0, compiler.line) }
 
-Return    = 'return' SPACE arg:Expr - !','  { $$ = NODE(RETURN, arg) }
-          | 'return' '(' arg:Expr ')' - !','{ $$ = NODE(RETURN, arg) }
-          | 'return' SPACE args:AryItems    { $$ = NODE(RETURN, NODE(ARRAY, args)) }
-          | 'return' '(' args:AryItems ')'  { $$ = NODE(RETURN, NODE(ARRAY, args)) }
-          | 'return'                        { $$ = NODE(RETURN, 0) }
+Return    = 'return' SPACE arg:Expr - !','  { $$ = newASTNode(compiler.vm, NODE_RETURN, arg, 0, 0, compiler.line) }
+          | 'return' '(' arg:Expr ')' - !','{ $$ = newASTNode(compiler.vm, NODE_RETURN, arg, 0, 0, compiler.line) }
+          | 'return' SPACE args:AryItems    { $$ = newASTNode(compiler.vm, NODE_RETURN, newASTNode(compiler.vm, NODE_ARRAY, args, 0, 0, compiler.line), 0, 0, compiler.line) }
+          | 'return' '(' args:AryItems ')'  { $$ = newASTNode(compiler.vm, NODE_RETURN, newASTNode(compiler.vm, NODE_ARRAY, args, 0, 0, compiler.line), 0, 0, compiler.line) }
+          | 'return'                        { $$ = newASTNode(compiler.vm, NODE_RETURN, 0, 0, 0, compiler.line) }
 
-Break     = 'break'                         { $$ = NODE(BREAK, 0) }
+Break     = 'break'                         { $$ = newASTNode(compiler.vm, NODE_BREAK, 0, 0, 0, compiler.line) }
 
-Value     = v:NUMBER                        { $$ = NODE(VALUE, v) }
-          | v:SYMBOL                        { $$ = NODE(VALUE, v) }
-          | v:REGEXP                        { $$ = NODE(VALUE, v) }
-          | v:STRING1                       { $$ = NODE(STRING, v) }
-          | v:STRING2                       { $$ = NODE(STRING, v) }
-          | v:CONST                         { $$ = NODE(CONST, v) }
-          | 'nil'                           { $$ = NODE(NIL, 0) }
-          | 'true'                          { $$ = NODE(BOOL, TR_TRUE) }
-          | 'false'                         { $$ = NODE(BOOL, TR_FALSE) }
-          | 'self'                          { $$ = NODE(SELF, 0) }
-          | name:IVAR                       { $$ = NODE(GETIVAR, name) }
-          | name:CVAR                       { $$ = NODE(GETCVAR, name) }
-          | name:GLOBAL                     { $$ = NODE(GETGLOBAL, name) } # TODO
-          | '[' - ']'                       { $$ = NODE(ARRAY, NODES_N(0)) }
-          | '[' - items:AryItems - ']'      { $$ = NODE(ARRAY, items) }
-          | '{' - '}'                       { $$ = NODE(HASH, NODES_N(0)) }
-          | '{' - items:HashItems - '}'     { $$ = NODE(HASH, items) }
+Value     = v:NUMBER                        { $$ = newASTNode(compiler.vm, NODE_VALUE, v, 0, 0, compiler.line) }
+          | v:SYMBOL                        { $$ = newASTNode(compiler.vm, NODE_VALUE, v, 0, 0, compiler.line) }
+          | v:REGEXP                        { $$ = newASTNode(compiler.vm, NODE_VALUE, v, 0, 0, compiler.line) }
+          | v:STRING1                       { $$ = newASTNode(compiler.vm, NODE_STRING, v, 0, 0, compiler.line) }
+          | v:STRING2                       { $$ = newASTNode(compiler.vm, NODE_STRING, v, 0, 0, compiler.line) }
+          | v:CONST                         { $$ = newASTNode(compiler.vm, NODE_CONST, v, 0, 0, compiler.line) }
+          | 'nil'                           { $$ = newASTNode(compiler.vm, NODE_NIL, 0, 0, 0, compiler.line) }
+          | 'true'                          { $$ = newASTNode(compiler.vm, NODE_BOOL, TR_TRUE, 0, 0, compiler.line) }
+          | 'false'                         { $$ = newASTNode(compiler.vm, NODE_BOOL, TR_FALSE, 0, 0, compiler.line) }
+          | 'self'                          { $$ = newASTNode(compiler.vm, NODE_SELF, 0, 0, 0, compiler.line) }
+          | name:IVAR                       { $$ = newASTNode(compiler.vm, NODE_GETIVAR, name, 0, 0, compiler.line) }
+          | name:CVAR                       { $$ = newASTNode(compiler.vm, NODE_GETCVAR, name, 0, 0, compiler.line) }
+          | name:GLOBAL                     { $$ = newASTNode(compiler.vm, NODE_GETGLOBAL, name, 0, 0, compiler.line) } # TODO
+          | '[' - ']'                       { $$ = newASTNode(compiler.vm, NODE_ARRAY, compiler.vm.newArray2(0), 0, 0, compiler.line) }
+          | '[' - items:AryItems - ']'      { $$ = newASTNode(compiler.vm, NODE_ARRAY, items, 0, 0, compiler.line) }
+          | '{' - '}'                       { $$ = newASTNode(compiler.vm, NODE_HASH, compiler.vm.newArray2(0), 0, 0, compiler.line) }
+          | '{' - items:HashItems - '}'     { $$ = newASTNode(compiler.vm, NODE_HASH, items, 0, 0, compiler.line) }
           | '(' - Expr - ')'
 
-AryItems  = - head:Expr -                   { head = NODES(head) }
-            ( ',' - tail:Expr -             { PUSH_NODE(head, tail) }
+AryItems  = - head:Expr -                   { head = compiler.vm.newArray2(1, head) }
+            ( ',' - tail:Expr -             { head.Push(tail) }
             )*                              { $$ = head }
 
-HashItems = head:Expr - '=>' - val:Expr     { head = NODES_N(2, head, val) }
-            ( - ',' - key:Expr -            { PUSH_NODE(head, key) }
-                '=>' - val:Expr             { PUSH_NODE(head, val) }
+HashItems = head:Expr - '=>' - val:Expr     { head = compiler.vm.newArray2(2, head, val) }
+            ( - ',' - key:Expr -            { head.Push(key) }
+                '=>' - val:Expr             { head.Push(val) }
             )*                              { $$ = head }
 
 KEYWORD   = 'while' | 'until' | 'do' | 'end' |
@@ -254,29 +257,29 @@ SYMBOL    = ':' < (NAME | KEYWORD) >        { $$ = TrSymbol_new(yyvm, yytext) }
 
 STRING1   = '\''                            { STRING_START }
             (
-              '\\\''                        { STRING_PUSH("'", 1) }
-            | < [^\'] >                     { STRING_PUSH(yytext, yyleng) }
+              '\\\''                        { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "'", sizeof(char) * 1); nbuf += 1; }
+            | < [^\'] >                     { assert(nbuf + yyleng < 4096); memcpy(sbuf + nbuf, yytext, sizeof(char) * yyleng); nbuf += yyleng; }
             )* '\''                         { $$ = TrString_new2(yyvm, sbuf) }
 
-ESC_CHAR  = '\\n'                           { STRING_PUSH("\n", 1) }
-          | '\\b'                           { STRING_PUSH("\b", 1) }
-          | '\\f'                           { STRING_PUSH("\f", 1) }
-          | '\\r'                           { STRING_PUSH("\r", 1) }
-          | '\\t'                           { STRING_PUSH("\t", 1) }
-          | '\\\"'                          { STRING_PUSH("\"", 1) }
-          | '\\\\'                          { STRING_PUSH("\\", 1) }
+ESC_CHAR  = '\\n'                           { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "\n", sizeof(char) * 1); nbuf += 1; }
+          | '\\b'                           { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "\b", sizeof(char) * 1); nbuf += 1; }
+          | '\\f'                           { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "\f", sizeof(char) * 1); nbuf += 1; }
+          | '\\r'                           { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "\r", sizeof(char) * 1); nbuf += 1; }
+          | '\\t'                           { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "\t", sizeof(char) * 1); nbuf += 1; }
+          | '\\\"'                          { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "\"", sizeof(char) * 1); nbuf += 1; }
+          | '\\\\'                          { assert(nbuf + 1 < 4096); memcpy(sbuf + nbuf, "\\", sizeof(char) * 1); nbuf += 1; }
 
 STRING2   = '"'                             { STRING_START }
             (
               ESC_CHAR
-            | < [^\"] >                     { STRING_PUSH(yytext, yyleng) }  #" for higlighting
+            | < [^\"] >                     { assert(nbuf + yyleng < 4096); memcpy(sbuf + nbuf, yytext, sizeof(char) * yyleng); nbuf += yyleng; }  #" for higlighting
             )*
             '"'                             { $$ = TrString_new2(yyvm, sbuf) }
 
 REGEXP    = '/'                             { STRING_START }
             (
               ESC_CHAR
-            | < [^/] >                      { STRING_PUSH(yytext, yyleng) }
+            | < [^/] >                      { assert(nbuf + yyleng < 4096); memcpy(sbuf + nbuf, yytext, sizeof(char) * yyleng); nbuf += yyleng; }
             )*
             '/'                             { $$ = TrRegexp_new(yyvm, sbuf, 0) }
 
@@ -315,7 +318,9 @@ RubyObject yyerror() {
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + msg));
 		return TR_UNDEF;
 	}
-	tr_raise(SyntaxError, msg.ptr);
+	vm.throw_reason = TR_THROW_EXCEPTION;
+	vm.throw_value = TrException_new(vm, vm.cSyntaxError, tr_sprintf(vm, msg.ptr));
+	return TR_UNDEF;
 }
 
 /* Compiles code to a Block.

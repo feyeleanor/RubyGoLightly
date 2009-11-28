@@ -1,6 +1,5 @@
 import (
 	"tr";
-	"internal";
 )
 
 type Closure struct {

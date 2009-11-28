@@ -1,45 +1,44 @@
 import (
 	"tr";
 	"opcode";
-	"internal";
 	"fmt";
 	"container/vector";
 )
 
 type Block struct {
 	// static
-	k			*Vector;
-	strings		*StringVector;
-	locals		*Vector;
-	upvals		*Vector;
-	code		*Vector;
-	defaults	*IntVector;
+	k			Vector;
+	strings		StringVector;
+	locals		Vector;
+	upvals		Vector;
+	code		Vector;
+	defaults	Vector;
 	blocks		[]Block;
 	regc		int;
 	argc		int;
 	arg_splat	int;
-	filename	*RubyObject;
+	filename	RubyObject;
 	line		int;
 	parent 		*Block;
 	// dynamic
-	sites		CallSiteVector;
+	sites		Vector;
 }
 
-
-func newBlock(compiler *Compiler, parent *Block) *Block {
-	block = new(Block);
-	block.defaults = IntVector.New(0)
-	block.strings = StringVector.New(0)
-	block.filename = compiler.filename;
-	block.line = 1;
-	block.regc = 0;
-	block.argc = 0;
-	block.parent = parent;
-	block.k = Vector.New(0);
-	block.code = Vector.New(0);
-	block.locals = Vector.New(0);
-	block.sites = Vector.New(0);
-	return block;
+func (compiler *Compiler) newBlock(parent *Block) *Block {
+	return Block{	parent:		parent,
+					k:			Vector.New(0),
+					strings:	StringVector.new(0),
+					locals: 	Vector.new(0),
+					upvals:		Vector.new(0),
+					code:		Vector.new(0),
+					defaults:	Vector.new(0),
+					sites:		Vector.new(0),
+					blocks:		Vector.new(0),
+					regc:		0,
+					argc:		0,
+					line:		1,
+					filename:	compiler.filename,
+				 }
 }
 
 func (b *Block) dump(vm *RubyVM, level int) RubyObject {

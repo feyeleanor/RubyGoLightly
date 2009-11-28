@@ -6,31 +6,23 @@ import (
 	"bytes";
 	"fmt";
 	"tr";
-	"internal";
 )
 
 // symbol
 
-func TrSymbol_lookup(vm *RubyVM, str string) RubyObject {
-	symbols := vm.symbols;
-	k := kh_get(str, symbols, str);
-	if (k != kh_end(symbols)) return kh_value(symbols, k);
-	return TR_NIL;
+func TrSymbol_lookup(vm *RubyVM, name string) RubyObject {
+	return vm.symbols[name] || TR_NIL;
 }
 
-func TrSymbol_add(vm *RubyVM, str *string, id *RubyObject) {
-	ret int;
-	symbols := vm.symbols;
-	k := kh_put(str, symbols, str, &ret);
-	if (!ret) kh_del(str, symbols, k);
-	kh_value(symbols, k) = id;
+func TrSymbol_add(vm *RubyVM, name *string, id *RubyObject) {
+	vm.symbols[name] = id;
 }
 
 func TrSymbol_new(vm *RubyVM, str *string) RubyObject {
 	id := TrSymbol_lookup(vm, str);
   
 	if (!id) {
-		s := Symbol{type: TR_T_Symbol, class: vm.classes[TR_T_Symbol], ivars: kh_init(RubyObject), len: strlen(str), ptr: make([]byte, s.len + 1), interned: true};
+		s := Symbol{type: TR_T_Symbol, class: vm.classes[TR_T_Symbol], ivars: make(map[string] RubyObject), len: strlen(str), ptr: make([]byte, s.len + 1), interned: true};
 		bytes.Copy(s.ptr, str[0:s.len - 1]);
 		s.ptr[s.len] = '\0';
 		id := s;
@@ -49,8 +41,8 @@ func TrSymbol_to_s(vm *RubyVM, self *RubyObject) RubyObject {
 }
 
 func TrSymbol_init(vm *RubyVM) {
-  c := vm.classes[TR_T_Symbol] = Object_const_set(vm, vm.self, tr_intern(Symbol), newClass(vm, tr_intern(Symbol), vm.classes[TR_T_Object]));
-  tr_def(c, "to_s", TrSymbol_to_s, 0);
+	c := vm.classes[TR_T_Symbol] = Object_const_set(vm, vm.self, TrSymbol_new(vm, Symbol), newClass(vm, TrSymbol_new(vm, Symbol), vm.classes[TR_T_Object]));
+	c.add_method(vm, TrSymbol_new(vm, "to_s"), newMethod(vm, (TrFunc *)TrSymbol_to_s, TR_NIL, 0));
 }
 
 // string
@@ -69,7 +61,7 @@ func TrString_size(vm *RubyVM, self) RubyObject {
 }
 
 func TrString_new(vm *RubyVM, str *string, len size_t) RubyObject {
-	s := String{type: TR_T_String, class: vm.classes[TR_T_String], ivars: kh_init(RubyObject), len: len, ptr: make([]byte, s.len + 1)};
+	s := String{type: TR_T_String, class: vm.classes[TR_T_String], ivars: make(map[string] RubyObject), len: len, ptr: make([]byte, s.len + 1)};
 	bytes.Copy(s.ptr, str[0:s.len - 1]);
 	s.ptr[s.len] = '\0';
 	return s;
@@ -80,7 +72,7 @@ func TrString_new2(vm *RubyVM, str *string) RubyObject {
 }
 
 func TrString_new3(vm *RubyVM, len size_t) RubyObject {
-	s := String{type: TR_T_String, class: vm.classes[TR_T_String], ivars: kh_init(RubyObject), len: len, ptr: make([]byte, s.len + 1)};
+	s := String{type: TR_T_String, class: vm.classes[TR_T_String], ivars: make(map[string] RubyObject), len: len, ptr: make([]byte, s.len + 1)};
 	s.ptr[s.len] = '\0'
 	return s;
 }
@@ -161,7 +153,7 @@ func TrString_to_sym(vm *RubyVM, self *RubyObject) RubyObject {
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + self));
 		return TR_UNDEF;
 	}
-	return tr_intern(self.ptr);
+	return TrSymbol_new(vm, self.ptr);
 }
 
 // Uses variadic ... parameter which replaces the mechanism used by stdarg.h
@@ -179,13 +171,13 @@ func tr_sprintf(vm *RubyVM, fmt *string, args ...) RubyObject {
 }
 
 func TrString_init(vm *RubyVM) {
-	c := vm.classes[TR_T_String] = Object_const_set(vm, vm.self, tr_intern(String), newClass(vm, tr_intern(String), vm.classes[TR_T_Object]));
-	tr_def(c, "to_s", TrString_to_s, 0);
-	tr_def(c, "to_sym", TrString_to_sym, 0);
-	tr_def(c, "size", TrString_size, 0);
-	tr_def(c, "replace", TrString_replace, 1);
-	tr_def(c, "substring", TrString_substring, 2);
-	tr_def(c, "+", TrString_add, 1);
-	tr_def(c, "<<", TrString_push, 1);
-	tr_def(c, "<=>", TrString_cmp, 1);
+	c := vm.classes[TR_T_String] = Object_const_set(vm, vm.self, TrSymbol_new(vm, String), newClass(vm, TrSymbol_new(vm, String), vm.classes[TR_T_Object]));
+	c.add_method(vm, TrSymbol_new(vm, "to_s"), newMethod(vm, (TrFunc *)TrString_to_s, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "to_sym"), newMethod(vm, (TrFunc *)TrString_to_sym, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "size"), newMethod(vm, (TrFunc *)TrString_size, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "replace"), newMethod(vm, (TrFunc *)TrString_replace, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "substring"), newMethod(vm, (TrFunc *)ToString_substring, TR_NIL, 2));
+	c.add_method(vm, TrSymbol_new(vm, "+"), newMethod(vm, (TrFunc *)TrString_add, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "<<"), newMethod(vm, (TrFunc *)TrString_push, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "<=>"), newMethod(vm, (TrFunc *)TrString_cmp, TR_NIL, 1));
 }

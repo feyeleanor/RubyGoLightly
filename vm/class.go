@@ -1,12 +1,11 @@
 import (
 	"tr";
-	"internal";
 )
 
 type Method struct {
 	type			TR_T;
 	class			*RubyObject;
-	ivars			*map[string] RubyObject;
+	ivars			map[string] RubyObject;
   	func			*TrFunc;
 	data			*RubyObject;
 	name			*RubyObject;
@@ -16,34 +15,29 @@ type Method struct {
 type Module struct {
 	type			TR_T;
 	class			*RubyObject;
-	ivars			*map[string] *RubyObject;
+	ivars			map[string] RubyObject;
 	name			*RubyObject;
 	super			*RubyObject;
 	methods			map[string] RubyObject;
-	meta:1			int;
+	meta			bool;
 }
 
-type Class struct {
-	module			Module;
+func (vm *RubyVM) newModule(name *RubyObject) RubyObject {
+	return Module{type: TR_T_Module, class: vm.classes[TR_T_Module], ivars: make(map[string] RubyObject), name: name, methods: make(map[string] RubyObject)};
 }
 
-
-/* included module proxy */
-
-func newIModule(vm *RubyVM, module, super *RubyObject) RubyObject {
+func (vm *RubyVM) newIncludedModule(module, super *RubyObject) RubyObject {
 	if !module.(Class) && !module.(Module) {
 		vm.throw_reason = TR_THROW_EXCEPTION;
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + module));
 		return TR_UNDEF;
 	}
 	m := Class *(module);
-	return Module{type: TR_T_Module, class: vm.classes[TR_T_Module], ivars: kh_init(RubyObject), name: m.name, methods: m.methods, super: super};
+	return Module{type: TR_T_Module, class: vm.classes[TR_T_Module], ivars: make(map[string] RubyObject), name: m.name, methods: m.methods, super: super};
 }
 
-/* module */
-
-func newModule(vm *RubyVM, name *RubyObject) RubyObject {
-	return Module{type: TR_T_Module, class: vm.classes[TR_T_Module], ivars: kh_init(RubyObject), name: name, methods: kh_init(RubyObject), meta: false};
+type Class struct {
+	module			Module;
 }
 
 func (self *Module) instance_method(vm *RubyVM, name *RubyObject) RubyObject {
@@ -54,7 +48,7 @@ func (self *Module) instance_method(vm *RubyVM, name *RubyObject) RubyObject {
 	}
 	class := Class *(self);
 	while (class) {
-		if method := TR_KH_GET(class.methods, name) { return method; }
+		if method := class.methods[name] { return method; }
 		class = Class *(class).super;
 	}
 	return TR_NIL;
@@ -67,8 +61,8 @@ func (self *Module) add_method(vm *RubyVM, name, method *RubyObject) RubyObject 
 		return TR_UNDEF;
 	}
 	m := Class *(self);
-	TR_KH_SET(m.methods, name, method);
-	Method *(method).name = name;
+	m.methods[name] = method;
+	method.name = name;
 	return method;
 }
 
@@ -83,7 +77,7 @@ func (self *Module) include(vm *RubyVM, module *RubyObject) RubyObject {
 		return TR_UNDEF;
 	}
 	class := Class *(self);
-	class.super = newIModule(vm, module, class.super);
+	class.super = vm.newIncludedModule(module, class.super);
 	return module;
 }
 
@@ -97,18 +91,18 @@ func (self *Module) name(vm *RubyVM) RubyObject {
 }
 
 func TrModule_init(vm *RubyVM) {
-	c := vm.classes[TR_T_Module] = Object_const_set(vm, vm.self, tr_intern(Module), newClass(vm, tr_intern(Module), vm.classes[TR_T_Object]));
-	tr_def(c, "name", TrModule_name, 0);
-	tr_def(c, "include", TrModule_include, 1);
-	tr_def(c, "instance_method", TrModule_instance_method, 1);
-	tr_def(c, "alias_method", TrModule_alias_method, 2);
-	tr_def(c, "to_s", TrModule_name, 0);
+	c := vm.classes[TR_T_Module] = Object_const_set(vm, vm.self, TrSymbol_new(vm, Module), newClass(vm, TrSymbol_new(vm, Module), vm.classes[TR_T_Object]));
+	c.add_method(vm, TrSymbol_new(vm, "name"), newMethod(vm, (TrFunc *)TrModule_name, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "include"), newMethod(vm, (TrFunc *)TrModule_include, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "instance_method"), newMethod(vm, (TrFunc *)TrModule_instance_method, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "alias_method"), newMethod(vm, (TrFunc *)TrModule_instance_method, TR_NIL, 2));
+	c.add_method(vm, TrSymbol_new(vm, "to_s"), newMethod(vm, (TrFunc *)TrModule_name, TR_NIL, 0));
 }
 
 /* class */
 
 func newClass(vm *RubyVM, name, super *RubyObject) RubyObject {
-	c := Class{type: TR_T_Class, class: vm.classes[TR_T_Class], ivars: kh_init(RubyObject), name: name, methods: kh_init(RubyObject), meta: false};
+	c := Class{type: TR_T_Class, class: vm.classes[TR_T_Class], ivars: make(map[string] RubyObject), name: name, methods: make(map[string] RubyObject), meta: false};
 	if !super.(Class) && !super.(Module) {
 		vm.throw_reason = TR_THROW_EXCEPTION;
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + super));
@@ -121,7 +115,7 @@ func newClass(vm *RubyVM, name, super *RubyObject) RubyObject {
 }
 
 func (self *Class) allocate(vm *RubyVM) RubyObject {
-	return Object{type: TR_T_Object, class: vm.classes[TR_T_Object], ivars: kh_init(RubyObject), class: self};
+	return Object{type: TR_T_Object, class: vm.classes[TR_T_Object], ivars: make(map[string] RubyObject), class: self};
 }
 
 func (self *Class) superclass(vm *RubyVM) RubyObject {
@@ -143,9 +137,9 @@ func (self *Class) superclass(vm *RubyVM) RubyObject {
 }
 
 func TrClass_init(vm *RubyVM) {
-	c := vm.classes[TR_T_Class] = Object_const_set(vm, vm.self, tr_intern(Class), newClass(vm, tr_intern(Class), vm.classes[TR_T_Module]));
-	tr_def(c, "superclass", TrClass_superclass, 0);
-	tr_def(c, "allocate", TrClass_allocate, 0);
+	c := vm.classes[TR_T_Class] = Object_const_set(vm, vm.self, TrSymbol_new(vm, Class), newClass(vm, TrSymbol_new(vm, Class), vm.classes[TR_T_Module]));
+	c.add_method(vm, TrSymbol_new(vm, "superclass"), newMethod(vm, (TrFunc *)TrClass_superclass, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "allocate"), newMethod(vm, (TrFunc *)TrClass_allocate, TR_NIL, 0));
 }
 
 /* metaclass */
@@ -168,7 +162,7 @@ func newMetaClass(vm *RubyVM, super *RubyObject) RubyObject {
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + name));
 		return TR_UNDEF;
 	}
-	name := tr_intern(name.ptr); /* symbolize */
+	name := TrSymbol_new(vm, name.ptr); /* symbolize */
 	mc = newClass(vm, name, 0);
 	mc.super = super;
 	mc.meta = 1;
@@ -178,7 +172,7 @@ func newMetaClass(vm *RubyVM, super *RubyObject) RubyObject {
 /* method */
 
 func newMethod(vm *RubyVM, function *TrFunc, data *RubyObject, arity int) RubyObject {
-	return Method{type: TR_T_Method, class: vm.classes[TR_T_Method], ivars: kh_init(RubyObject), func: function, data: data, arity: arity};
+	return Method{type: TR_T_Method, class: vm.classes[TR_T_Method], ivars: make(map[string] RubyObject), func: function, data: data, arity: arity};
 }
 
 func (self *Method) name(vm *RubyVM) RubyObject { return ((Method *) self).name; }
@@ -201,8 +195,8 @@ func (self *Method) dump(vm *RubyVM) RubyObject {
 }
 
 func TrMethod_init(vm *RubyVM) {
-	c := vm.classes[TR_T_Method] = Object_const_set(vm, vm.self, tr_intern(Method), newClass(vm, tr_intern(Method), vm.classes[TR_T_Object]));
-	tr_def(c, "name", TrMethod_name, 0);
-	tr_def(c, "arity", TrMethod_arity, 0);
-	tr_def(c, "dump", TrMethod_dump, 0);
+	c := vm.classes[TR_T_Method] = Object_const_set(vm, vm.self, TrSymbol_new(vm, Method), newClass(vm, TrSymbol_new(vm, Method), vm.classes[TR_T_Object]));
+	c.add_method(vm, TrSymbol_new(vm, "name"), newMethod(vm, (TrFunc *)TrMethod_name, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "arity"), newMethod(vm, (TrFunc *)TrMethod_arity, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "dump"), newMethod(vm, (TrFunc *)TrMethod_dump, TR_NIL, 0));
 }

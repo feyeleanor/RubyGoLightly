@@ -7,10 +7,11 @@
 #include <gc.h>
 #include <pcre.h>
 
-import(
-	"config";
-	"vendor/khash";
-)
+#ifdef __unix__
+  #include <unistd.h>
+#else
+  #include "freegetopt/getopt.h"
+#endif
 
 const (
 	TR_VERSION		"0.0";
@@ -19,29 +20,6 @@ const (
 
 /* allocation macros */
 #define TR_REALLOC           GC_realloc
-
-/* raw hash macros */
-#define TR_KH_GET(KH,K) ({ \
-	key := (K); \
-	hash := (KH); \
-	k := kh_get(RubyObject, hash, key); \
-	k == kh_end(hash) ? TR_NIL : kh_value(hash, k); \
-})
-#define TR_KH_SET(KH,K,V) ({ \
-	key := (K); \
-	hash := (KH); \
-	int ret; \
-	k := kh_put(RubyObject, hash, key, &ret); \
-	kh_value(hash, k) = (V); \
-})
-#define TR_KH_EACH(H,I,V,B) ({ \
-	khiter_t __k##V; \
-	for (__k##V = kh_begin(H); __k##V != kh_end(H); ++__k##V) \
-		if (kh_exist((H), __k##V)) { \
-			V := kh_value((H), __k##V); \
-			B \
-		} \
-	})
 
 /* immediate values macros */
 #define TR_IMMEDIATE(X)      (X==TR_NIL || X==TR_TRUE || X==TR_FALSE || X==TR_UNDEF || TR_IS_FIX(X))
@@ -52,30 +30,6 @@ const (
 #define TR_FALSE             OBJ(2)
 #define TR_TRUE              OBJ(4)
 #define TR_UNDEF             OBJ(6)
-
-/* API macros */
-#define tr_getivar(O,N)      TR_KH_GET(Object*(O).ivars, tr_intern(N))
-#define tr_setivar(O,N,V)    TR_KH_SET(Object*(O).ivars, tr_intern(N), V)
-#define tr_getglobal(N)      TR_KH_GET(vm.globals, tr_intern(N))
-#define tr_setglobal(N,V)    TR_KH_SET(vm.globals, tr_intern(N), V)
-#define tr_intern(S)         TrSymbol_new(vm, (S))
-#define tr_raise(T,M,...)    {	\
-	vm.throw_reason = TR_THROW_EXCEPTION; \
-	vm.throw_value = TrException_new(vm, vm.c##T, tr_sprintf(vm, (M), ##__VA_ARGS__)); \
-	return TR_UNDEF; \
-}
-
-#define tr_raise_errno(M)    tr_raise(SystemCallError, "%s: %s", strerror(errno), (M))
-#define tr_def(C,N,F,A)      (C).add_method(vm, tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
-#define tr_metadef(O,N,F,A)  Object_add_singleton_method(vm, (O), tr_intern(N), newMethod(vm, (TrFunc *)(F), TR_NIL, (A)))
-#define tr_defclass(N,S)     Object_const_set(vm, vm.self, tr_intern(N), newClass(vm, tr_intern(N), S))
-#define tr_defmodule(N)      Object_const_set(vm, vm.self, tr_intern(N), newModule(vm, tr_intern(N)))
-
-#define tr_send(R,MSG,...)   ({ \
-	__argv[] := { (MSG), ##__VA_ARGS__ }; \
-	Object_send(vm, R, sizeof(__argv)/sizeof(RubyObject), __argv); \
-})
-#define tr_send2(R,STR,...)  tr_send((R), tr_intern(STR), ##__VA_ARGS__)
 
 typedef unsigned long OBJ;
 typedef unsigned char u8;
@@ -92,11 +46,31 @@ typedef enum {
   TR_T_MAX /* keep last */
 } TR_T;
 
-typedef enum {
-	TR_THROW_EXCEPTION,
-	TR_THROW_RETURN,
-	TR_THROW_BREAK
-} TR_THROW_REASON;
+const(
+	TR_T_Object = iota;
+	TR_T_Module;
+	TR_T_Class;
+	TR_T_Method;
+	TR_T_Binding;
+	TR_T_Symbol;
+	TR_T_String;
+	TR_T_Fixnum;
+	TR_T_Range;
+	TR_T_Regexp;
+ 	TR_T_NilClass;
+	TR_T_TrueClass;
+	TR_T_FalseClass,
+	TR_T_Array;
+	TR_T_Hash;
+	TR_T_Node;
+	TR_T_MAX;			// keep last
+)
+
+const(
+	TR_THROW_EXCEPTION = iota;
+	TR_THROW_RETURN;
+	TR_THROW_BREAK;
+)
 
 type TrCallSite struct {
 	class			*RubyObject;
@@ -123,7 +97,7 @@ type TrBinding struct {
 type TrString struct {
 	type 			TR_T;
 	class			*RubyObject;
-	ivars			*map[string] *RubyObject;
+	ivars			map[string] *RubyObject;
 	ptr				*char;
 	len				size_t;
 	interned		bool;
@@ -133,7 +107,7 @@ type TrSymbol TrString
 type TrRange struct {
 	type			TR_T;
 	class			*RubyObject;
-	ivars			*map[string] *RubyObject;
+	ivars			map[string] *RubyObject;
 	first, last		*RubyObject;
 	exclusive		int;
 }
@@ -141,22 +115,16 @@ type TrRange struct {
 type TrHash struct {
 	type			TR_T;
 	class			*RubyObject;
-	ivars			*map[string] *RubyObject;
-	kh				*map[string] *RubyObject;
+	ivars			map[string] RubyObject;
+	hash			map[string] RubyObject;
 }
 
 type TrRegexp struct {
 	type			TR_T;
 	class			*RubyObject;
-	ivars			*map[string] RubyObject;
+	ivars			map[string] RubyObject;
   	re				*pcre;
 }
-
-#ifdef __unix__
-  #include <unistd.h>
-#else
-  #include "freegetopt/getopt.h"
-#endif
 
 func usage() {
 	fmt.println("usage: tinyrb [options] [file]");

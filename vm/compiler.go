@@ -1,18 +1,63 @@
 import (
 	"tr";
 	"opcode";
-	"internal";
 )
 
 // ast node
 type ASTNode struct {
 	type		TR_T;
 	class		*RubyObject;
-	ivars		*map[string] RubyObject;
+	ivars		map[string] RubyObject;
 	ntype		int;
 	args		[3]RubyObject;
 	line		size_t;
 }
+
+// types of nodes in the AST built by the parser
+const (
+	NODE_ROOT = iota;
+	NODE_BLOCK;
+	NODE_VALUE;
+	NODE_STRING;
+	NODE_ASSIGN;
+	NODE_ARG;
+	NODE_SEND;
+	NODE_MSG;
+	NODE_IF;
+	NODE_UNLESS;
+	NODE_AND;
+	NODE_OR;
+	NODE_WHILE;
+	NODE_UNTIL;
+	NODE_BOOL;
+	NODE_NIL;
+	NODE_SELF;
+	NODE_LEAVE;
+	NODE_RETURN;
+	NODE_BREAK;
+	NODE_YIELD;
+	NODE_DEF;
+	NODE_METHOD;
+	NODE_PARAM;
+	NODE_CLASS;
+	NODE_MODULE;
+	NODE_CONST;
+	NODE_SETCONST;
+	NODE_ARRAY;
+	NODE_HASH;
+	NODE_RANGE;
+	NODE_GETIVAR;
+	NODE_SETIVAR;
+	NODE_GETCVAR;
+	NODE_SETCVAR;
+	NODE_GETGLOBAL;
+	NODE_SETGLOBAL;
+	NODE_ADD;
+	NODE_SUB;
+	NODE_LT;
+	NODE_NEG;
+	NODE_NOT;
+)
 
 func newASTNode(vm *RubyVM, type int, a, b, c *RubyObject, line size_t) RubyObject {
 	return ASTNode{ntype: type, type: TR_T_NODE, args: {a, b, c}, line: line}
@@ -33,7 +78,7 @@ func newCompiler(vm *RubyVM, filename *string) Compiler * {
 	compiler := new(Compiler);
 	compiler.line = 1;
 	compiler.vm = vm;
-	compiler.block = newBlock(compiler, 0);
+	compiler.block = compiler.newBlock(nil);
 	compiler.reg = 0;
 	compiler.node = TR_NIL;
 	compiler.filename = TrString_new2(vm, filename);
@@ -101,7 +146,11 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 					if reg >= b.regc { b.regc = reg + 1; }
 					index++;
 				}
-				if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside Array") }
+				if start_reg != reg {
+					vm.throw_reason = TR_THROW_EXCEPTION;
+					vm.throw_value = TrException_new(vm, vm.cSyntaxError, tr_sprintf(vm, "Can't create local variable inside Array"));
+					return TR_UNDEF;
+				}
 			}
 			b.code.Push(MachineOp{OpCode: TR_OP_NEWARRAY, A: reg, B: size});
 
@@ -120,7 +169,11 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 					if reg >= b.regc { b.regc = reg + 1; }
 					index++;
 				}
-				if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside Hash") }
+				if start_reg != reg {
+					vm.throw_reason = TR_THROW_EXCEPTION;
+					vm.throw_value = TrException_new(vm, vm.cSyntaxError, tr_sprintf(vm, "Can't create local variable inside Hash"));
+					return TR_UNDEF;
+				}
 			}
 			b.code.Push(MachineOp{OpCode: TR_OP_NEWHASH, A: reg, B: size / 2});
 
@@ -131,7 +184,11 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 			if next_reg >= b.regc { b.regc = next_reg + 1; }
 			self.args[1].compile(vm, c, b, next_reg);
 			if next_reg >= b.regc { b.regc = next_reg + 1; }
-			if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside Range") }
+			if start_reg != reg {
+				vm.throw_reason = TR_THROW_EXCEPTION;
+				vm.throw_value = TrException_new(vm, vm.cSyntaxError, tr_sprintf(vm, "Can't create local variable inside Range"));
+				return TR_UNDEF;
+			}
 			b.code.Push(MachineOp{OpCode: TR_OP_NEWRANGE, A: reg, B: next_reg, C: self.args[2]});
 
 		case NODE_ASSIGN:
@@ -217,14 +274,18 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 						if argument.args[1] { argc |= 1 }		// splat
 						index++;
 					}
-					if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside arguments") }
+					if start_reg != reg {
+						vm.throw_reason = TR_THROW_EXCEPTION;
+						vm.throw_value = TrException_new(vm, vm.cSyntaxError, tr_sprintf(vm, "Can't create local variable inside arguments"));
+						return TR_UNDEF;
+					}
 				}
 
 				// block
 				blki := 0;
 				blk := nil;
 				if (self.args[2]) {
-					blk := newBlock(c, b);
+					blk := c.newBlock(b);
 					blkn := self.args[2];
 					blki = b.blocks.Len() + 1;
 					blk.argc = 0;
@@ -377,14 +438,18 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 					if reg >= b.regc { b.regc = reg + 1; }
 					index++;
 				}
-				if start_reg != reg { tr_raise(SyntaxError, "Can't create local variable inside yield") }
+				if start_reg != reg {
+					vm.throw_reason = TR_THROW_EXCEPTION;
+					vm.throw_value = TrException_new(vm, vm.cSyntaxError, tr_sprintf(vm, "Can't create local variable inside yield"));
+					return TR_UNDEF;
+				}
 			}
 			b.code.Push(MachineOp{OpCode: TR_OP_YIELD, A: reg, B:argc});
 
 		case NODE_DEF: {
 			method := self.args[0];
 			assert(method.ntype == NODE_METHOD);
-			blk := newBlock(c, 0);
+			blk := c.newBlock(nil);
 			blki := b.blocks.Len();
 			blk_reg := 0;
 			b.blocks.Push(blk);
@@ -427,7 +492,7 @@ func (self *ASTNode) compile(vm *RubyVM, c *Compiler, b *Block, reg int) RubyObj
 			}
 
 		case NODE_CLASS, NODE_MODULE:
-			blk := newBlock(c, 0);
+			blk := c.newBlock(nil);
 			blki := b.blocks.Len();
 			b.blocks.Push(blk);
 			reg = 0;

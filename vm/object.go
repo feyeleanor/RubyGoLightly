@@ -1,17 +1,16 @@
 import (
 	"tr";
-	"internal";
 	"call";
 )
 
 type Object struct {
 	type 			TR_T;
 	class			*RubyObject;
-	ivars			*map[string] *RubyObject;
+	ivars			map[string] RubyObject;
 }
 
 func Object_alloc(vm *RubyVM, class *RubyObject) RubyObject {
-	return Object{type: TR_T_Object, class: vm.classes[TR_T_Object], ivars: kh_init(RubyObject), class: class};
+	return Object{type: TR_T_Object, class: vm.classes[TR_T_Object], ivars: make(map[string] RubyObject), class: class};
 }
 
 func Object_type(vm *RubyVM, obj *RubyObject) int {
@@ -40,14 +39,20 @@ func Object_method_missing(vm *RubyVM, self *RubyObject, argc int, argv []RubyOb
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + argv[0]));
 		return TR_UNDEF;
 	}
-	tr_raise(NoMethodError, "Method not found: `%s'", argv[0].ptr);
+	vm.throw_reason = TR_THROW_EXCEPTION;
+	vm.throw_value = TrException_new(vm, vm.cNoMethodError, tr_sprintf(vm, "Method not found: `%s'", argv[0].ptr));
+	return TR_UNDEF;
 }
 
 func Object_send(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) RubyObject {
-	if argc == 0 { tr_raise(ArgumentError, "wrong number of arguments (%d for 1)", argc); }
+	if argc == 0 {
+		vm.throw_reason = TR_THROW_EXCEPTION;
+		vm.throw_value = TrException_new(vm, vm.cArgumentError, tr_sprintf(vm, "wrong number of arguments (%d for 1)", argc));
+		return TR_UNDEF;
+	}
 	method := Object_method(vm, self, argv[0]);
 	if method == TR_NIL {
-		method = Object_method(vm, self, tr_intern("method_missing"));
+		method = Object_method(vm, self, TrSymbol_new(vm, "method_missing"));
 		return method.call(vm, self, argc, argv, 0, 0);
 	} else {
 		return method.call(vm, self, argc-1, argv+1, 0, 0);
@@ -56,16 +61,11 @@ func Object_send(vm *RubyVM, self *RubyObject, argc int, argv []RubyObject) Ruby
 
 // TODO respect namespace
 func Object_const_get(vm *RubyVM, self, name *RubyObject) RubyObject {
-	k := kh_get(RubyObject, vm.consts, name);
-	if (k != kh_end(vm.consts)) return kh_value(vm.consts, k);
-	return TR_NIL;
+	return vm.consts[name] || TR_NIL;
 }
 
 func Object_const_set(vm *RubyVM, self, name, value *RubyObject) RubyObject {
-	int ret;
-	k := kh_put(RubyObject, vm.consts, name, &ret);
-	if (!ret) kh_del(RubyObject, vm.consts, k);
-	kh_value(vm.consts, k) = value;
+	vm.consts[name] = value;
 	return value;
 }
 
@@ -117,7 +117,7 @@ func Object_instance_eval(vm *RubyVM, self, code *RubyObject) RubyObject {
 }
 
 func Object_inspect(vm *RubyVM, self *RubyObject) RubyObject {
-	class_name := tr_send2(tr_send2(self, "class"), "name")
+	class_name := Object_send(vm, Object_send(vm, self, 1, { TrSymbol_new(vm, "class") }), 1, { TrSymbol_new(vm, "name") });
 	if !class_name.(String) && !class_name.(Symbol) {
 		vm.throw_reason = TR_THROW_EXCEPTION;
 		vm.throw_value = TrException_new(vm, vm.cTypeError, TrString_new2(vm, "Expected " + class_name));
@@ -127,17 +127,17 @@ func Object_inspect(vm *RubyVM, self *RubyObject) RubyObject {
 }
 
 func Object_preinit(vm *RubyVM) {
-	return vm.classes[TR_T_Object] = Object_const_set(vm, vm.self, tr_intern(Object), newClass(vm, tr_intern(Object), vm.classes[TR_T_Object]));
+	return vm.classes[TR_T_Object] = Object_const_set(vm, vm.self, TrSymbol_new(vm, Object), newClass(vm, TrSymbol_new(vm, Object), vm.classes[TR_T_Object]));
 }
 
 func Object_init(vm *RubyVM) {
 	c := vm.classes[TR_T_Object];
-	tr_def(c, "class", Object_class, 0);
-	tr_def(c, "method", Object_method, 1);
-	tr_def(c, "method_missing", Object_method_missing, -1);
-	tr_def(c, "send", Object_send, -1);
-	tr_def(c, "object_id", Object_object_id, 0);
-	tr_def(c, "instance_eval", Object_instance_eval, 1);
-	tr_def(c, "to_s", Object_inspect, 0);
-	tr_def(c, "inspect", Object_inspect, 0);
+	c.add_method(vm, TrSymbol_new(vm, "class"), newMethod(vm, (TrFunc *)Object_class, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "method"), newMethod(vm, (TrFunc *)Object_method, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "method_missing"), newMethod(vm, (TrFunc *)Object_method_missing, TR_NIL, -1));
+	c.add_method(vm, TrSymbol_new(vm, "send"), newMethod(vm, (TrFunc *)Object_send, TR_NIL, -1));
+	c.add_method(vm, TrSymbol_new(vm, "object_id"), newMethod(vm, (TrFunc *)Object_object_id, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "instance_eval"), newMethod(vm, (TrFunc *)Object_instance_eval, TR_NIL, 1));
+	c.add_method(vm, TrSymbol_new(vm, "to_s"), newMethod(vm, (TrFunc *)Object_inspect, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "inspect"), newMethod(vm, (TrFunc *)Object_inspect, TR_NIL, 0));
 }

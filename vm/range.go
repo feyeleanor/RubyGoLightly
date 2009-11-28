@@ -1,10 +1,9 @@
 import (
 	"tr";
-	"internal";
 	)
 
 func TrRange_new(vm *RubyVM, first, last *RubyObject, exclusive int) RubyObject {
-	return Range{type: TR_T_Range, class: vm.classes[TR_T_Range], ivars: kh_init(RubyObject), first: first, last: last, exclusive: exclusive};
+	return Range{type: TR_T_Range, class: vm.classes[TR_T_Range], ivars: make(map[string] RubyObject), first: first, last: last, exclusive: exclusive};
 }
 
 func TrRange_first(vm *RubyVM, self *RubyObject) RubyObject {
@@ -40,8 +39,8 @@ func TrRange_exclude_end(vm *RubyVM, self *RubyObject) RubyObject {
 }
 
 func TrRange_init(vm *RubyVM) {
-  c := vm.classes[TR_T_Range] = Object_const_set(vm, vm.self, tr_intern(Range), newClass(vm, tr_intern(Range), vm.classes[TR_T_Object]));
-  tr_def(c, "first", TrRange_first, 0);
-  tr_def(c, "last", TrRange_last, 0);
-  tr_def(c, "exclude_end?", TrRange_exclude_end, 0);
+	c := vm.classes[TR_T_Range] = Object_const_set(vm, vm.self, TrSymbol_new(vm, Range), newClass(vm, TrSymbol_new(vm, Range), vm.classes[TR_T_Object]));
+	c.add_method(vm, TrSymbol_new(vm, "first"), newMethod(vm, (TrFunc *)TrRange_first, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "last"), newMethod(vm, (TrFunc *)TrRange_last, TR_NIL, 0));
+	c.add_method(vm, TrSymbol_new(vm, "exclude_end?"), newMethod(vm, (TrFunc *)TrRange_exclude_end, TR_NIL, 0));
 }
