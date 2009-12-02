@@ -82,11 +82,15 @@ struct Variable	 {
 	int offset;
 };
 
-func newVariable(name string) *Variable {
+func findVariable(name string) *Variable {
 	for node := thisRule.variables.Iter() {
 		if name == node.name { return node; }
 	}
-	thisRule.variables.Push(Variable{name: name});
+	return nil
+}
+
+func newVariable(name string) *Variable {
+	thisRule.variables.Push(findVariable(name) || Variable{name: name});
 	return thisRule.variables.Last();
 }
 
@@ -182,38 +186,16 @@ int lastToken= -1;
 
 import "strings";
 
-func _newNode(type, size int) *Node {
-	Node *node= calloc(1, size);
-	node->type= type;
-	return node;
-}
-
-#define newNode(T)	_newNode(T, sizeof(struct T))
-
-func makeCharacter(text string) *Node {
-	node := newNode(Character);
-	node.character.value = text;
-	return node;
-}
-
 func makeAction(text string) *Node {
-	node := newNode(Action);
 	name := new([1024]byte);
-	assert(thisRule);
-	actionCount++;
-	sprintf(name, "_%d_%s", actionCount, thisRule.rule.name);
-	node.action.name = name;
-	node.action.text = text;
-	node.action.list = actions;
-	node.action.rule = thisRule;
-	actions = node;
-	node.action.text = strings.Join(strings.Split(node.action.text, '$$', 0), 'yy');
+	sprintf(name, "_%d_%s", actions.Len(), thisRule.name);
+	actions.Push(Action{name: name, text: strings.Join(strings.Split(text, '$$', 0), 'yy'), list: actions, rule: thisRule})
 	return node;
 }
 
 func makeAlternate(e *Node) *Node {
 	if Alternate != e.type {
-		node := newNode(Alternate);
+		node := Alternate{};
 		assert(e);
 		assert(!e.any.next);
 		node.alternate.first = node.alternate.last = e;
@@ -222,8 +204,11 @@ func makeAlternate(e *Node) *Node {
 	return e;
 }
 
+func (node *Alternate) *Alternate {
+	a := makeAlternate(node);
+}
+
 func Alternate_append(a, e *Node) *Node {
-	assert(a);
 	a := makeAlternate(a);
 	assert(a.alternate.last);
 	assert(e);
@@ -234,7 +219,7 @@ func Alternate_append(a, e *Node) *Node {
 
 func makeSequence(e *Node) *Node {
 	if Sequence != e.type {
-		node := newNode(Sequence);
+		node := Sequence{};
 		assert(e);
 		assert(!e.any.next);
 		node.sequence.first = node.sequence.last = e;
