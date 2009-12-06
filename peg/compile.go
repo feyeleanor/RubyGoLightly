@@ -16,308 +16,252 @@
  * Last edited: 2007-08-31 13:55:23 by piumarta on emilia.local
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
+import "tree"
 
-#include "version.h"
-#include "tree.h"
-
-static int yyl(void)
-{
-  static int prev= 0;
-  return ++prev;
+prev := 0
+func yyl() {
+  prev++;
+  return prev;
 }
 
-static void charClassSet  (unsigned char bits[], int c)	{ bits[c >> 3] |=  (1 << (c & 7)); }
-static void charClassClear(unsigned char bits[], int c)	{ bits[c >> 3] &= ~(1 << (c & 7)); }
+func charClassSet(bits []byte, c int) int {
+	bits[c >> 3] |=  (1 << (c & 7));
+}
+
+func charClassClear(bits []byte, c int)	int {
+	bits[c >> 3] &= ~(1 << (c & 7));
+}
 
 typedef void (*setter)(unsigned char bits[], int c);
 
-static char *makeCharClass(unsigned char *cclass)
-{
-  unsigned char	 bits[32];
-  setter	 set;
-  int		 c, prev= -1;
+func *makeCharClass(unsigned char *cclass) *byte {
+	bits	[32]byte;
+	set		setter;
+	c		int;
+	prev := -1;
+
   static char	 string[256];
   char		*ptr;
 
-  if ('^' == *cclass)
-    {
-      memset(bits, 255, 32);
-      set= charClassClear;
-      ++cclass;
-    }
-  else
-    {
-      memset(bits, 0, 32);
-      set= charClassSet;
-    }
-  while ((c= *cclass++))
-    {
-      if ('-' == c && *cclass && prev >= 0)
-	{
-	  for (c= *cclass++;  prev <= c;  ++prev)
-	    set(bits, prev);
-	  prev= -1;
+	if ('^' == *cclass) {
+		memset(bits, 255, 32);
+		set := charClassClear;
+		cclass++;
+	} else {
+		memset(bits, 0, 32);
+		set := charClassSet;
 	}
-      else if ('\\' == c && *cclass)
-	{
-	  switch (c= *cclass++)
-	    {
-	    case 'a':  c= '\a'; break;	/* bel */
-	    case 'b':  c= '\b'; break;	/* bs */
-	    case 'e':  c= '\e'; break;	/* esc */
-	    case 'f':  c= '\f'; break;	/* ff */
-	    case 'n':  c= '\n'; break;	/* nl */
-	    case 'r':  c= '\r'; break;	/* cr */
-	    case 't':  c= '\t'; break;	/* ht */
-	    case 'v':  c= '\v'; break;	/* vt */
-	    default:		break;
-	    }
-	  set(bits, prev= c);
+
+	for (c = *cclass++) {
+		if ('-' == c && *cclass && prev >= 0) {
+			for  c = *cclass++;  prev <= c;  ++prev {
+				set(bits, prev);
+			}
+			prev= -1;
+		} else if '\\' == c && *cclass {
+			switch c = *cclass++ {
+				case 'a':  c= '\a';	/* bel */
+				case 'b':  c= '\b';	/* bs */
+				case 'e':  c= '\e';	/* esc */
+				case 'f':  c= '\f';	/* ff */
+				case 'n':  c= '\n';	/* nl */
+				case 'r':  c= '\r';	/* cr */
+				case 't':  c= '\t';	/* ht */
+				case 'v':  c= '\v';	/* vt */
+			}
+			set(bits, prev= c);
+		} else {
+			set(bits, prev= c);
+		}
 	}
-      else
-	set(bits, prev= c);
-    }
 
-  ptr= string;
-  for (c= 0;  c < 32;  ++c)
-    ptr += sprintf(ptr, "\\%03o", bits[c]);
-
-  return string;
-}
-
-static void begin(void)		{ fprintf(output, "\n  {"); }
-static void end(void)		{ fprintf(output, "\n  }"); }
-static void label(int n)	{ fprintf(output, "\n  l%d:;\t", n); }
-static void jump(int n)		{ fprintf(output, "  goto l%d;", n); }
-static void save(int n)		{ fprintf(output, "  int yypos%d= yypos, yythunkpos%d= yythunkpos;", n, n); }
-static void restore(int n)	{ fprintf(output,     "  yypos= yypos%d; yythunkpos= yythunkpos%d;", n, n); }
-
-static void Node_compile_c_ko(Node *node, int ko)
-{
-  assert(node);
-  switch (node->type)
-    {
-    case Rule:
-      fprintf(stderr, "\ninternal error #1 (%s)\n", node->rule.name);
-      exit(1);
-      break;
-
-    case Dot:
-      fprintf(output, "  if (!yymatchDot()) goto l%d;", ko);
-      break;
-
-    case Name:
-      fprintf(output, "  if (!yy_%s()) goto l%d;", node->name.rule->rule.name, ko);
-      if (node->name.variable)
-	fprintf(output, "  yyDo(yySet, %d, 0);", node->name.variable->variable.offset);
-      break;
-
-    case Character:
-    case String:
-      {
-	int len= strlen(node->string.value);
-	if (1 == len || (2 == len && '\\' == node->string.value[0]))
-	  fprintf(output, "  if (!yymatchChar('%s')) goto l%d;", node->string.value, ko);
-	else
-	  fprintf(output, "  if (!yymatchString(\"%s\")) goto l%d;", node->string.value, ko);
-      }
-      break;
-
-    case Class:
-      fprintf(output, "  if (!yymatchClass((unsigned char *)\"%s\")) goto l%d;", makeCharClass(node->cclass.value), ko);
-      break;
-
-    case Action:
-      fprintf(output, "  yyDo(yy%s, yybegin, yyend);", node->action.name);
-      break;
-
-    case Predicate:
-      fprintf(output, "  yyText(yybegin, yyend);  if (!(%s)) goto l%d;", node->action.text, ko);
-      break;
-
-    case Alternate:
-      {
-	int ok= yyl();
-	begin();
-	save(ok);
-	for (node= node->alternate.first;  node;  node= node->alternate.next)
-	  if (node->alternate.next)
-	    {
-	      int next= yyl();
-	      Node_compile_c_ko(node, next);
-	      jump(ok);
-	      label(next);
-	      restore(ok);
-	    }
-	  else
-	    Node_compile_c_ko(node, ko);
-	end();
-	label(ok);
-      }
-      break;
-
-    case Sequence:
-      for (node= node->sequence.first;  node;  node= node->sequence.next)
-	Node_compile_c_ko(node, ko);
-      break;
-
-    case PeekFor:
-      {
-	int ok= yyl();
-	begin();
-	save(ok);
-	Node_compile_c_ko(node->peekFor.element, ko);
-	restore(ok);
-	end();
-      }
-      break;
-
-    case PeekNot:
-      {
-	int ok= yyl();
-	begin();
-	save(ok);
-	Node_compile_c_ko(node->peekFor.element, ok);
-	jump(ko);
-	label(ok);
-	restore(ok);
-	end();
-      }
-      break;
-
-    case Query:
-      {
-	int qko= yyl(), qok= yyl();
-	begin();
-	save(qko);
-	Node_compile_c_ko(node->query.element, qko);
-	jump(qok);
-	label(qko);
-	restore(qko);
-	end();
-	label(qok);
-      }
-      break;
-
-    case Star:
-      {
-	int again= yyl(), out= yyl();
-	label(again);
-	begin();
-	save(out);
-	Node_compile_c_ko(node->star.element, out);
-	jump(again);
-	label(out);
-	restore(out);
-	end();
-      }
-      break;
-
-    case Plus:
-      {
-	int again= yyl(), out= yyl();
-	Node_compile_c_ko(node->plus.element, ko);
-	label(again);
-	begin();
-	save(out);
-	Node_compile_c_ko(node->plus.element, out);
-	jump(again);
-	label(out);
-	restore(out);
-	end();
-      }
-      break;
-
-    default:
-      fprintf(stderr, "\nNode_compile_c_ko: illegal node type %d\n", node->type);
-      exit(1);
-    }
-}
-
-
-static int countVariables(Node *node)
-{
-  int count= 0;
-  while (node)
-    {
-      ++count;
-      node= node->variable.next;
-    }
-  return count;
-}
-
-static void defineVariables(Node *node)
-{
-  int count= 0;
-  while (node)
-    {
-      fprintf(output, "#define %s yyval[%d]\n", node->variable.name, --count);
-      node->variable.offset= count;
-      node= node->variable.next;
-    }
-}
-
-static void undefineVariables(Node *node)
-{
-  while (node)
-    {
-      fprintf(output, "#undef %s\n", node->variable.name);
-      node= node->variable.next;
-    }
-}
-
-
-static void Rule_compile_c2(Node *node)
-{
-  assert(node);
-  assert(Rule == node->type);
-
-  if (!node->rule.expression)
-    fprintf(stderr, "rule '%s' used but not defined\n", node->rule.name);
-  else
-    {
-      int ko= yyl(), safe;
-
-      if ((!(RuleUsed & node->rule.flags)) && (node != start))
-	fprintf(stderr, "rule '%s' defined but not used\n", node->rule.name);
-
-      safe= ((Query == node->rule.expression->type) || (Star == node->rule.expression->type));
-
-      fprintf(output, "\nYY_RULE(int) yy_%s()\n{", node->rule.name);
-      if (!safe) save(0);
-      if (node->rule.variables)
-	fprintf(output, "  yyDo(yyPush, %d, 0);", countVariables(node->rule.variables));
-      fprintf(output, "\n  yyprintf((stderr, \"%%s\\n\", \"%s\"));", node->rule.name);
-      Node_compile_c_ko(node->rule.expression, ko);
-      fprintf(output, "\n  yyprintf((stderr, \"  ok   %%s @ %%s\\n\", \"%s\", yybuf+yypos));", node->rule.name);
-      if (node->rule.variables)
-	fprintf(output, "  yyDo(yyPop, %d, 0);", countVariables(node->rule.variables));
-      fprintf(output, "\n  return 1;");
-      if (!safe)
-	{
-	  label(ko);
-	  restore(0);
-	  fprintf(output, "\n  yyprintf((stderr, \"  fail %%s @ %%s\\n\", \"%s\", yybuf+yypos));", node->rule.name);
-	  fprintf(output, "\n  return 0;");
+	ptr = string;
+	for c := 0;  c < 32;  c++ {
+		ptr += sprintf(ptr, "\\%03o", bits[c]);
 	}
-      fprintf(output, "\n}");
-    }
-
-  if (node->rule.next)
-    Rule_compile_c2(node->rule.next);
+	return string;
 }
 
-static char *header= "\
-#include <stdio.h>\n\
-#include <stdlib.h>\n\
-#include <string.h>\n\
-";
+func begin() { fprintf(output, "\n  {"); }
+func end() { fprintf(output, "\n  }"); }
+func label(n int) { fprintf(output, "\n  l%d:;\t", n); }
+func jump(n int) { fprintf(output, "  goto l%d;", n); }
+func save(n int) { fprintf(output, "  int yypos%d= yypos, yythunkpos%d= yythunkpos;", n, n); }
+func restore(n int) { fprintf(output,     "  yypos= yypos%d; yythunkpos= yythunkpos%d;", n, n); }
 
-static char *preamble= "\
+func Node_compile_c_ko(node *Node, ko int) {
+	assert(node);
+	switch (node.type) {
+		case Rule:
+			fprintf(stderr, "\ninternal error #1 (%s)\n", node.name);
+			exit(1);
+
+		case Dot:
+			fprintf(output, "  if (!yymatchDot()) goto l%d;", ko);
+
+		case Name:
+			fprintf(output, "  if (!yy_%s()) goto l%d;", node.rule.name, ko);
+			if node.variable { fprintf(output, "  yyDo(yySet, %d, 0);", node.variable.offset); }
+
+		case Character, String:
+			length := len(node.value);
+			if 1 == length || (2 == length && '\\' == node.value[0]) {
+				fprintf(output, "  if (!yymatchChar('%s')) goto l%d;", node.value, ko);
+			} else {
+				fprintf(output, "  if (!yymatchString(\"%s\")) goto l%d;", node.value, ko);
+			}
+
+		case Class:
+			fprintf(output, "  if (!yymatchClass((unsigned char *)\"%s\")) goto l%d;", makeCharClass(node.value), ko);
+
+		case Action:
+			fprintf(output, "  yyDo(yy%s, yybegin, yyend);", node.name);
+
+		case Predicate:
+			fprintf(output, "  yyText(yybegin, yyend);  if (!(%s)) goto l%d;", node.text, ko);
+
+		case Alternate:
+			ok := yyl();
+			begin();
+			save(ok);
+			for node := node->alternate.first;  node;  node = node->alternate.next {
+				if node->alternate.next {
+					next := yyl();
+					Node_compile_c_ko(node, next);
+					jump(ok);
+					label(next);
+					restore(ok);
+				} else {
+					Node_compile_c_ko(node, ko);
+				}
+			}
+			end();
+			label(ok);
+
+		case Sequence:
+			for node := node->sequence.first;  node;  node = node->sequence.next {
+				Node_compile_c_ko(node, ko);
+			}
+
+		case PeekFor:
+			ok := yyl();
+			begin();
+			save(ok);
+			Node_compile_c_ko(node->peekFor.element, ko);
+			restore(ok);
+			end();
+
+		case PeekNot:
+			ok := yyl();
+			begin();
+			save(ok);
+			Node_compile_c_ko(node->peekFor.element, ok);
+			jump(ko);
+			label(ok);
+			restore(ok);
+			end();
+
+		case Query:
+			qko := yyl();
+			qok := yyl();
+			begin();
+			save(qko);
+			Node_compile_c_ko(node->query.element, qko);
+			jump(qok);
+			label(qko);
+			restore(qko);
+			end();
+			label(qok);
+
+		case Star:
+			again := yyl();
+			out := yyl();
+			label(again);
+			begin();
+			save(out);
+			Node_compile_c_ko(node->star.element, out);
+			jump(again);
+			label(out);
+			restore(out);
+			end();
+
+		case Plus:
+			again := yyl();
+			out:= yyl();
+			Node_compile_c_ko(node->plus.element, ko);
+			label(again);
+			begin();
+			save(out);
+			Node_compile_c_ko(node->plus.element, out);
+			jump(again);
+			label(out);
+			restore(out);
+			end();
+
+		default:
+			fprintf(stderr, "\nNode_compile_c_ko: illegal node type %d\n", node->type);
+			exit(1);
+	}
+}
+
+
+func countVariables(Node *node) int {
+	count := 0;
+	for node {
+		count++;
+		node = node.next;
+	}
+	return count;
+}
+
+func defineVariables(Node *node) {
+	count := 0;
+	for node {
+		count--;
+		fprintf(output, "#define %s yyval[%d]\n", node.name, count);
+		node.offset = count;
+		node = node.next;
+	}
+}
+
+func undefineVariables(Node *node) {
+	for node {
+		fprintf(output, "#undef %s\n", node.name);
+		node = node.next;
+	}
+}
+
+func Rule_compile_c2(Node *node) {
+	assert(node);
+	assert(Rule == node.type);
+
+	if !node.expression {
+		fprintf(stderr, "rule '%s' used but not defined\n", node.name);
+	} else {
+		ko := yyl()
+		if !node.used && node != start { fprintf(stderr, "rule '%s' defined but not used\n", node.name) }
+		safe := (Query == node.expression.type) || (Star == node.expression.type);
+		fprintf(output, "\nYY_RULE(int) yy_%s()\n{", node.name);
+		if !safe { save(0) }
+		if node.variables { fprintf(output, "  yyDo(yyPush, %d, 0);", countVariables(node.variables)) }
+		fprintf(output, "\n  yyprintf((stderr, \"%%s\\n\", \"%s\"));", node.name);
+		Node_compile_c_ko(node.expression, ko);
+		fprintf(output, "\n  yyprintf((stderr, \"  ok   %%s @ %%s\\n\", \"%s\", yybuf+yypos));", node.name);
+		if node.variables { fprintf(output, "  yyDo(yyPop, %d, 0);", countVariables(node.variables)) }
+		fprintf(output, "\n  return 1;");
+		if !safe {
+			label(ko);
+			restore(0);
+			fprintf(output, "\n  yyprintf((stderr, \"  fail %%s @ %%s\\n\", \"%s\", yybuf+yypos));", node.name);
+			fprintf(output, "\n  return 0;");
+		}
+		fprintf(output, "\n}");
+	}
+	if node.next { Rule_compile_c2(node.next) }
+}
+
+header := "import ( "fmt" );"
+preamble := "\
 #ifndef YY_VARIABLE\n\
 #define YY_VARIABLE(T)	static T\n\
 #endif\n\
@@ -538,7 +482,7 @@ YY_LOCAL(void) yySet(char *text, int count)	{ (void)text; yyval[count]= yy; }\n\
 \n\
 ";
 
-static char *footer= "\n\
+footer := "\n\
 \n\
 #ifndef YY_PART\n\
 \n\
@@ -590,96 +534,77 @@ YY_PARSE(int) YYPARSE(void)\n\
 #endif\n\
 ";
 
-void Rule_compile_c_header(void)
-{
-  fprintf(output, "/* A recursive-descent parser generated by peg %d.%d.%d */\n", PEG_MAJOR, PEG_MINOR, PEG_LEVEL);
-  fprintf(output, "\n");
-  fprintf(output, "%s", header);
-  fprintf(output, "#define YYRULECOUNT %d\n", ruleCount);
+func Rule_compile_c_header() {
+	fprintf(output, "/* A recursive-descent parser generated by peg %d.%d.%d */\n", PEG_MAJOR, PEG_MINOR, PEG_LEVEL);
+	fprintf(output, "\n");
+	fprintf(output, "%s", header);
+	fprintf(output, "#define YYRULECOUNT %d\n", ruleCount);
 }
 
-int consumesInput(Node *node)
-{
-  if (!node) return 0;
+func consumesInput(Node *node) bool {
+	if !node { return false }
+	switch node.type {
+		case Rule:
+			result := false;
+			if node.reached {
+				fprintf(stderr, "possible infinite left recursion in rule '%s'\n", node.name);
+			} else {
+				node.reached = true;
+				result := consumesInput(node.expression);
+				node.reached = false;
+			}
+			return result;
 
-  switch (node->type)
-    {
-    case Rule:
-      {
-	int result= 0;
-	if (RuleReached & node->rule.flags)
-	  fprintf(stderr, "possible infinite left recursion in rule '%s'\n", node->rule.name);
-	else
-	  {
-	    node->rule.flags |= RuleReached;
-	    result= consumesInput(node->rule.expression);
-	    node->rule.flags &= ~RuleReached;
-	  }
-	return result;
-      }
-      break;
+		case Dot, Class:
+			return true;
 
-    case Dot:		return 1;
-    case Name:		return consumesInput(node->name.rule);
-    case Character:
-    case String:	return strlen(node->string.value) > 0;
-    case Class:		return 1;
-    case Action:	return 0;
-    case Predicate:	return 0;
+		case Name:
+			return consumesInput(node.name.rule);
 
-    case Alternate:
-      {
-	Node *n;
-	for (n= node->alternate.first;  n;  n= n->alternate.next)
-	  if (!consumesInput(n))
-	    return 0;
-      }
-      return 1;
+		case Character, String:
+			return len(node.string.value) > 0;
 
-    case Sequence:
-      {
-	Node *n;
-	for (n= node->alternate.first;  n;  n= n->alternate.next)
-	  if (consumesInput(n))
-	    return 1;
-      }
-      return 0;
+		case Action, Predicate:
+			return false;
 
-    case PeekFor:	return 0;
-    case PeekNot:	return 0;
-    case Query:		return 0;
-    case Star:		return 0;
-    case Plus:		return consumesInput(node->plus.element);
+		case Alternate:
+			for n := node.alternate.first;  n;  n = n.alternate.next {
+				if !consumesInput(n) { return false }
+			}
+			return true;
 
-    default:
-      fprintf(stderr, "\nconsumesInput: illegal node type %d\n", node->type);
-      exit(1);
-    }
-  return 0;
+		case Sequence:
+			for n := node.alternate.first;  n;  n = n.alternate.next {
+				if consumesInput(n) { return true }
+			}
+			return false;
+
+		case PeekFor, PeekNot, Query, Star, Plus:
+			return consumesInput(node.plus.element);
+
+		default:
+			fprintf(stderr, "\nconsumesInput: illegal node type %d\n", node.type);
+			exit(1);
+		}
+	return false;
 }
 
-
-void Rule_compile_c(Node *node)
-{
-  Node *n;
-
-  for (n= rules;  n;  n= n->rule.next)
-    consumesInput(n);
-
-  fprintf(output, "%s", preamble);
-  for (n= node;  n;  n= n->rule.next)
-    fprintf(output, "YY_RULE(int) yy_%s(); /* %d */\n", n->rule.name, n->rule.id);
-  fprintf(output, "\n");
-  for (n= actions;  n;  n= n->action.list)
-    {
-      fprintf(output, "YY_ACTION(void) yy%s(char *yytext, int yyleng)\n{\n", n->action.name);
-      fprintf(output, "  (void)yytext; (void)yyleng;\n");
-      defineVariables(n->action.rule->rule.variables);
-      fprintf(output, "  yyprintf((stderr, \"do yy%s\\n\"));\n", n->action.name);
-      fprintf(output, "  %s;\n", n->action.text);
-      undefineVariables(n->action.rule->rule.variables);
-      fprintf(output, "}\n");
-    }
-  Rule_compile_c2(node);
-  fprintf(output, footer, start->rule.name);
+func Rule_compile_c(Node *node) {
+	for n := range rules { consumesInput(n) }
+	fprintf(output, "%s", preamble);
+	for n := node;  n;  n := n.rule.next) {
+		fprintf(output, "YY_RULE(int) yy_%s(); /* %d */\n", n.rule.name, n.rule.id);
+	}
+	fprintf(output, "\n");
+	for n := range actions {
+		fprintf(output, "YY_ACTION(void) yy%s(char *yytext, int yyleng)\n{\n", n.name);
+		fprintf(output, "  (void)yytext; (void)yyleng;\n");
+		defineVariables(n.rule.variables);
+		fprintf(output, "  yyprintf((stderr, \"do yy%s\\n\"));\n", n.name);
+		fprintf(output, "  %s;\n", n.text);
+		undefineVariables(n.rulevariables);
+		fprintf(output, "}\n");
+	}
+	Rule_compile_c2(node);
+	fprintf(output, footer, start.name);
 }

@@ -20,32 +20,27 @@
 
 enum { Unknown= 0, Rule, Variable, Name, Dot, Character, String, Class, Action, Predicate, Alternate, Sequence, PeekFor, PeekNot, Query, Star, Plus };
 
-enum {
-  RuleUsed	= 1<<0,
-  RuleReached	= 1<<1,
-};
-
 package pegleg
 
-struct Rule	 {
+type struct Rule {
 	string		name;
 	variables	Vector;
 	expression	*Node;
 	id			int;
-//	flags		int;
-	true		bool;
+	used		bool;
+	reached		bool;
 }
 
 func makeRule(name string) Rule {
 	ruleCount++;
-	node := Rule{name: name, id: ruleCount, flags: 0}
-	rules.Push(node);
+	node := Rule{name: name, id: ruleCount}
+	Rules.Push(node);
 	return node;
 }
 
 func findRule(name string) Rule {
 	rule_name = strings.Join(strings.Split(name, '-', 0), "_");
-	for rule := range rules.Iter() {
+	for rule := range Rules.Iter() {
 		if rule_name == rule.name { return rule; }
 	}
 	return makeRule(name);
@@ -61,26 +56,26 @@ func (self *Rule) setExpression(expression *Node) {
 	if !start || self.name == "start" { start = self; }
 }
 
-func (self *Rule) fprint(stream *FILE) {
-	fprintf(stream, "%s.%d =", self.name, self.id);
+func (self *Rule) fprint(stream *File) {
+	fmt.Fprintf(stream, "%s.%d =", self.name, self.id);
 	if self.expression {
 		Node_fprint(stream, self.expression);
 	} else {
-		fprintf(stream, " UNDEFINED");
+		fmt.Fprintf(stream, " UNDEFINED");
 	}
-	fprintf(stream, " ;\n");
+	fmt.Fprintf(stream, " ;\n");
 }
 
 func (self *Rule) print() {
-	self.fprint(stderr);
+	self.fprint(os.Stderr);
 }
 
-struct Variable	 {
+type struct Variable {
 	Node *next;
 	char *name;
 	Node *value;
 	int offset;
-};
+}
 
 func findVariable(name string) *Variable {
 	for node := thisRule.variables.Iter() {
@@ -94,87 +89,89 @@ func newVariable(name string) *Variable {
 	return thisRule.variables.Last();
 }
 
-struct Name	 {
-	Node *next;
-	Node *rule;
-	Node *variable;
-};
+type (
+	struct Name {
+		Node *next;
+		Node *rule;
+		Node *variable;
+	}
 
-struct Dot	 {
-	Node *next;
-};
+	struct Dot {
+		Node *next;
+	}
 
-struct Character {
-	Node *next;
-	char *value;
-};
+	struct Character {
+		Node *next;
+		char *value;
+	}
 
-struct String	 {
-	Node *next;
-	char *value;
-};
+	struct String {
+		Node *next;
+		char *value;
+	}
 
-struct Class	 {
-	Node *next;
-	unsigned char *value;
-};
+	struct Class {
+		Node *next;
+		unsigned char *value;
+	}
 
-struct Action	 {
-	Node *next;
-	char *text;
-	Node *list;
-	char *name;
-	Node *rule;
-};
+	struct Action {
+		Node *next;
+		char *text;
+		Node *list;
+		char *name;
+		Node *rule;
+	}
 
-struct Predicate {
-	Node *next;
-	char *text;
-};
+	struct Predicate {
+		Node *next;
+		char *text;
+	}
 
-struct Alternate {
-	Node *next;
-	Node *first;
-	Node *last;
-};
+	struct Alternate {
+		Node *next;
+		Node *first;
+		Node *last;
+	}
 
-struct Sequence	 {
-	Node *next;
-	Node *first;
-	Node *last;
-};
+	struct Sequence {
+		Node *next;
+		Node *first;
+		Node *last;
+	}
 
-struct PeekFor	 {
-	Node *next;
-	Node *element;
-};
+	struct PeekFor {
+		Node *next;
+		Node *element;
+	}
 
-struct PeekNot	 {
-	Node *next;
-	Node *element;
-};
+	struct PeekNot {
+		Node *next;
+		Node *element;
+	}
 
-struct Query	 {
-	Node *next;
-	Node *element;
-};
+	struct Query {
+		Node *next;
+		Node *element;
+	}
 
-struct Star	 {
-	Node *next;
-	Node *element;
-};
+	struct Star {
+		Node *next;
+		Node *element;
+	}
 
-struct Plus	 {
-	Node *next;
-	Node *element;
-};
+	struct Plus {
+		Node *next;
+		Node *element;
+	}
 
-struct Any	 {
-	Node *next;
-};
+	struct Any {
+		Node *next;
+	}
+)
 
 actions := Vector.new();
-rules := Vector.New(0);
+Rules := Vector.New(0);
 thisRule *Rule;
 
 Node *start= 0;
