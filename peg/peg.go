@@ -1,4 +1,5 @@
-/* Copyright (c) 2007 by Ian Piumarta
+/* Copyright (c) 2009 by Eleanor McHugh
+ * Derived from C sources copyright (c) 2007 by Ian Piumarta
  * All rights reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -12,8 +13,6 @@
  * appreciated but is not required.
  * 
  * THE SOFTWARE IS PROVIDED 'AS IS'.  USE ENTIRELY AT YOUR OWN RISK.
- * 
- * Last edited: 2007-09-12 00:27:30 by piumarta on vps2.piumarta.com
  */
 
 package pegleg
@@ -23,58 +22,68 @@ import (
 	"fmt";
 	"flag";
 	"container/vector";
+	"bytes";
 )
 
 const (
 	MAJOR = 0;
 	MINOR = 1;
-	LEVEL = 2;
+	LEVEL = 0;
 )
 
-var help_flag = flag.Bool("h", false, "print this help information")
-var output_file_name = flag.String("o", "", "write output to <ofile>")
-var verbose_flag = flag.Bool("v", false, "verbose output")
-var version_flag = flag.Bool("V", false, "print version number and exit")
+help_flag := flag.Bool("h", false, "print this help information")
+output_file_name := flag.String("o", "", "write output to <ofile>")
+verbose_flag := flag.Bool("v", false, "verbose output")
+version_flag := flag.Bool("V", false, "print version number and exit")
 
-func init() {
-	input := os.Stdin;
-	output := os.Stdout;
-	lineNumber := 1;
-	fileName := "<stdin>";
-}
+var input		*os.File;
+var output		*os.File;
+var lineNumber	int;
+
+yybegin := 0;
+yyend := 0;
+
+var TextBuffer	[]byte;
+var Token		string;
+TextCursor := 0;
+
+Thunks := vector.New(100);
+ThunkCursor := 0;
 
 func main() {
 	flag.Parse();
 	if *version_flag { version(); }
 	if *help_flag { usage(); }
-	if *output_file_name != "" {
+	if *output_file_name == "" {
+		output = os.Stdout;
+	} else {
 		output, error := os.Open(*output_file_name, os.O_WRONLY, 0777);
-		if error {
-			fmt.Fprintln(os.Stderr, *output_file_name, ":", error.String);
-			os.Exit(1);
-		}
+		if output == nil { critical_file_error(output, error); }
 	}
 
 	for arg := range flag.Args {
 		if arg == "-" {
 			input = os.Stdin;
-			fileName = "<stdin>";
 		} else {
 			input, error := os.Open(arg, os.O_RDONLY, 0777);
-			if error {
-				fmt.Fprintln(os.Stderr, arg, ":", error.String());
-				os.Exit(1);
-			}
-			fileName = arg;
+			if input == nil { critical_file_error(arg, error); }
 		}
 		lineNumber = 1;
-		if !yyparse() { yyerror("syntax error"); }
+		TextBuffer, error := io.ReadAll(input);
+		if TextBuffer == nil { critical_file_error(input.Name(), error); }
+		TextCursor = 0;
+		if !parse() { parser_error("syntax error"); }
 		if input != os.Stdin { input.Close(); }
 	}
 
 	if *verbose_flag { for rule := range Rules.Iter() { rule.print()); } }
 	Rule_compile_c_header();
 	if Rules { Rule_compile_c(Rules); }
+}
+
+func critical_file_error(name string, error os.Error) {
+	fmt.Fprintf(os.Stderr, "%s: error accessing '%s': %s\n", os.Args[0], name, error);
+	os.Exit(1);
 }
 
 func version() {
@@ -94,58 +103,67 @@ func usage() {
 	os.Exit(1);
 }
 
-func YY_INPUT(buf, result, max) {
-	c := getc(input);
-	if '\n' == c || '\r' == c { lineNumber++; }
-	result := (EOF == c) ? 0 : (*(buf)= c, 1);
+type Action func(*string, int);
+
+func (self *Action) store(begin, end int) {
+	for ThunkCursor > Thunks.Len() { Thunks.Push(Thunk{}) }
+	Thunks[ThunkCursor] = Thunk{begin: begin, end: end, action: self};
+	ThunkCursor++;
 }
 
-typedef void (*yyaction)(char *yytext, int yyleng);
-
-type struct yyThunk {
+type Thunk struct {
 	begin, end		int;
 	position		int;
-	action			yyaction;
+	action			Action;
 }
 
-func (self yyThunk) save(position int) *yyThunk {
-	return &yyThunk{begin: self.begin, end: self.end, action: self.action, position: position};
+func (identifier String) succeeded(position int) bool {
+	fmt.Fprintln(os.Stderr, "  ok   ", identifier, "@", position);
+	return true;
 }
 
-func (self yyThunk) restore() (thunk yyThunk, position int) {
-	return yyThunk{begin: self.begin, end: self.end, action: self.action}, self.position;
+func (identifier String) failed(position int) bool {
+	fmt.Fprintln(os.Stderr, "  fail ", identifier, "@", position);
+	return false;
 }
 
-yybuf : = "";
-yybuflen := 0;
-yypos := 0;
-yylimit := 0;
-yytext := "";
-yytextlen := 0;
-yybegin := 0;
-yyend := 0;
-yytextmax := 0;
+type Cursor struct {
+	text			int;
+	thunk			int;
+}
 
-Thunks := vector.New(100);
-ThunkCursor := 0;
+func cursor_checkpoint() *Cursor {
+	return &Cursor{text: TextCursor, thunk: ThunkCursor};
+}
 
-yy int;
-yyval *int;
-yyvals *int;
-yyvalslen := 0;
+func (self *Cursor) restore() {
+	ThunkCursor, TextCursor = Cursor.thunk, Cursor.text;
+}
 
-func yyerror(message string) {
-	fmt.Fprintf(os.Stderr, "%s:%d: %s", fileName, lineNumber, message);
-	if yytext[0] { os.Fprintf(os.Stderr, " near token '%s'\n", yytext); }
-	if yypos < yylimit || !feof(input) {
-		yybuf[yylimit]= '\0';
+func (self *[]byte) found_token(begin, end int) {
+	Token = string(self[begin : end]);
+}
+
+func parser_error(message string) {
+	fmt.Fprintf(os.Stderr, "%s:%d: %s", input.Name(), lineNumber, message);
+	if len(Token) > 0 { os.Fprintf(os.Stderr, " near token '%s'\n", Token); }
+	if TextCursor < len(TextBuffer) {
+		TextBuffer[len(TextBuffer)] = 0;
 		os.Stderr.WriteString(" before text \"");
-		for yypos < yylimit {
-			if '\n' == yybuf[yypos] || '\r' == yybuf[yypos] { break; }
-			0s.Stderr.WriteString(yybuf[yypos++]);
+		for TextCursor < len(TextBuffer) {
+			switch TextBuffer[TextCursor] {
+				case '\n', '\r':
+					break;
+
+				default:
+					os.Stderr.Write(TextBuffer[TextCursor]);
+					TextCursor++;
+			}
 		}
-		if yypos == yylimit {
-			for EOF != (c := fgetc(input)) && '\n' != c && '\r' != c { os.Stderr.WriteString(c); }
+		if TextCursor == len(TextBuffer) {
+			for EOF != (c := fgetc(input)) && '\n' != c && '\r' != c {
+				os.Stderr.WriteString(c);
+			}
 		}
 		os.Stderr.WriteString('\"');
 	}
@@ -153,558 +171,459 @@ func yyerror(message string) {
 	os.Exit(1);
 }
 
-func yyrefill() bool {
-	if yybuflen - yypos < 512 {
-		yybuflen *= 2;
-		yybuf = realloc(yybuf, yybuflen);
+func parse() bool {
+	yybegin = yyend = TextCursor;
+	ThunkCursor = 0;
+	if ok := parse_grammar() { done(); }
+	commit();
+	return ok;
+}
+
+func parse_grammar() bool {
+	position := cursor_checkpoint();
+	if spacing() && yy_Definition() {
+		for {
+			position_1 := cursor_checkpoint();
+			if !yy_Definition() { break; }
+		}
+		position_1.restore();
+		if yy_EndOfFile() { return "Grammar".succeeded(TextCursor); }
 	}
-	c := getc(input);
-	if '\n' == c || '\r' == c { lineNumber++; }
-	yyn := (EOF == c) ? false : (*(yybuf + yypos) = c, true);
-	if !yyn { return false; }
-	yylimit += yyn;
-	return true;
+	position.restore();
+	return "Grammar".failed(TextCursor);
+}
+
+func done() {
+	for thunk := range Thunks.Iter() {
+		if thunk.end {
+			TextBuffer.found_token(thunk.begin, thunk.end);
+			token_length := len(Token);
+		} else {
+			token_length := thunk.begin;
+		}
+		fmt.Fprintf(os.Stderr, "DO [%d] %p %s\n", pos, thunk.action, Token);
+		thunk.action(Token, token_length);
+	}
+	ThunkCursor = 0;
+}
+
+func commit() {
+	if (len(TextBuffer) - TextCursor) > 0 { TextBuffer = TextBuffer[TextCursor : len(TextBuffer)]; }
+	yybegin -= TextCursor;
+	yyend -= TextCursor;
+	TextCursor = ThunkCursor = 0;
 }
 
 func yymatchDot() bool {
-	if yypos >= yylimit && !yyrefill() { return false; }
-	yypos++;
+	TextCursor++;
 	return true;
 }
 
 func yymatchChar(c int) bool {
-	if yypos >= yylimit && !yyrefill() { return 0; }
-	if yybuf[yypos] == c {
-		yypos++;
-		fmt.Fprintf(os.Stderr, "  ok   yymatchChar(%c) @ %s\n", c, yybuf + yypos);
-		return true;
+	if TextBuffer[TextCursor] == c {
+		TextCursor++;
+		return ("yymatchChar(" + c + ")").succeeded(TextCursor);
+	} else {
+		return ("yymatchChar(" + c + ")").failed(TextCursor);
 	}
-	fmt.Fprintf(os.Stderr, "  fail yymatchChar(%c) @ %s\n", c, yybuf + yypos);
-	return false;
 }
 
 func yymatchString(s string) bool {
-	yysav := yypos;
+	yysav := TextCursor;
 	for *s {
-		if yypos >= yylimit && !yyrefill() { return 0; }
-		if yybuf[yypos] != *s {
-			yypos= yysav;
+		if TextBuffer[TextCursor] != *s {
+			TextCursor= yysav;
 			return false;
 		}
 		s++;
-		yypos++;
+		TextCursor++;
 	}
 	return true;
 }
 
 func yymatchClass(bits []byte) bool {
-	if yypos >= yylimit && !yyrefill() { return false; }
-	c := yybuf[yypos];
+	c := TextBuffer[TextCursor];
 	if bits[c >> 3] & (1 << (c & 7)) {
-		yypos++;
-		fmt.Fprintln(os.Stderr, "  ok   yymatchClass @ ", yybuf + yypos);
-		return true;
+		TextCursor++;
+		return "yymatchClass".succeeded(TextCursor);
 	}
-	fmt.Fprintln(os.Stderr, "  fail yymatchClass @ ", yybuf + yypos);
-	return false;
+	return "yymatchClass".failed(TextCursor);
 }
 
-func yyDo(action yyaction, begin, end int) {
-	Thunks[ThunkCursor] = yyThunk{begin: begin, end: end, action: action};
-	ThunkCursor++;
+func yy_7_Primary(text string, yyleng int) {
+	push(Predicate{text: "yyend = TextCursor"});
 }
 
-func yyText(begin, end int) int {
-	yyleng := end - begin;
-	if yyleng <= 0 {
-		yyleng= 0;
-	} else {
-		if yytextlen < (yyleng - 1) {
-			yytextlen *= 2;
-			yytext= realloc(yytext, yytextlen);
-		}
-		memcpy(yytext, yybuf + begin, yyleng);
-	}
-	yytext[yyleng]= '\0';
-	return yyleng;
+func yy_6_Primary(text string, yyleng int) {
+	push(Predicate{text: "yybegin = TextCursor"});
 }
 
-func yyDone() {
-	for thunk := range Thunks.Iter() {
-		yyleng := thunk.end ? yyText(thunk.begin, thunk.end) : thunk.begin;
-		fmt.Fprintf(os.Stderr, "DO [%d] %p %s\n", pos, thunk.action, yytext);
-		thunk.action(yytext, yyleng);
-	}
-	ThunkCursor = 0;
+func yy_5_Primary(text string, yyleng int) {
+	push(makeAction(text));
 }
 
-func yyCommit() {
-	if (yylimit -= yypos) > 0 { memmove(yybuf, yybuf + yypos, yylimit); }
-	yybegin -= yypos;
-	yyend -= yypos;
-	yypos = ThunkCursor = 0;
-}
-
-func yyAccept(tp0 int) bool {
-	if tp0 {
-		fmt.Fprintf(os.Stderr, "accept denied at %d\n", tp0);
-		return false;
-	} else {
-		yyDone();
-		yyCommit();
-	}
-	return true;
-}
-
-func yyPush(text string, count int)	{ yyval += count; }
-func yyPop(text string, count int)	{ yyval -= count; }
-func yySet(text string, count int)	{ yyval[count]= yy; }
-
-func yy_7_Primary(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_7_Primary");
-	push(Predicate{text: "yyend = yypos"});
-}
-
-func yy_6_Primary(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_6_Primary");
-	push(Predicate{text: "yybegin = yypos"});
-}
-
-func yy_5_Primary(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_5_Primary");
-	push(makeAction(yytext));
-}
-
-func yy_4_Primary(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_4_Primary");
+func yy_4_Primary(text string, yyleng int) {
 	push(Dot{});
 }
 
-func yy_3_Primary(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_3_Primary");
-	push(Class{cclass: yytext});
+func yy_3_Primary(text string, yyleng int) {
+	push(Class{cclass: text});
 }
 
-func yy_2_Primary(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_2_Primary");
-	push(String{value: yytext});
+func yy_2_Primary(text string, yyleng int) {
+	push(String{value: text});
 }
 
-func yy_1_Primary(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_1_Primary");
-	push(Name{used: true, variable: nil, rule: findRule(yytext)});
+func yy_1_Primary(text string, yyleng int) {
+	push(Name{used: true, variable: nil, rule: findRule(text)});
 }
 
-func yy_3_Suffix(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_3_Suffix");
+func yy_3_Suffix(text string, yyleng int) {
 	push(Plus{element: pop()});
 }
 
-func yy_2_Suffix(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_2_Suffix");
+func yy_2_Suffix(text string, yyleng int) {
 	push(Star{element: pop()});
 }
 
-func yy_1_Suffix(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_1_Suffix");
+func yy_1_Suffix(text string, yyleng int) {
 	push(Query{element: pop()});
 }
 
-func yy_3_Prefix(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_3_Prefix");
+func yy_3_Prefix(text string, yyleng int) {
 	push(PeekNot{element: pop()});
 }
 
-func yy_2_Prefix(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_2_Prefix");
+func yy_2_Prefix(text string, yyleng int) {
 	push(PeekFor{element: pop()});
 }
 
-func yy_1_Prefix(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_1_Prefix");
-	push(Predicate{text: yytext});
+func yy_1_Prefix(text string, yyleng int) {
+	push(Predicate{text: text});
 }
 
-func yy_2_Sequence(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_2_Sequence");
+func yy_2_Sequence(text string, yyleng int) {
 	push(Predicate{text: "1"});
 }
 
-func yy_1_Sequence(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_1_Sequence");
+func yy_1_Sequence(text string, yyleng int) {
 	f := pop();
 	push(Sequence_append(pop(), f));
 }
 
-func yy_1_Expression(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_1_Expression");
+func yy_1_Expression(text string, yyleng int) {
 	f := pop();
 	push(Alternate_append(pop(), f));
 }
 
-func yy_2_Definition(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_2_Definition");
+func yy_2_Definition(text string, yyleng int) {
 	e := pop();
 	Rule_setExpression(pop(), e);
 }
 
-func yy_1_Definition(yytext string, yyleng int) {
-	fmt.Fprintln(os.Stderr, "do yy_1_Definition");
-	if push(beginRule(findRule(yytext))).expression { fmt.Fprintf(os.Stderr, "rule '%s' redefined\n", yytext); }
+func yy_1_Definition(text string, yyleng int) {
+	if push(beginRule(findRule(text))).expression { fmt.Fprintf(os.Stderr, "rule '%s' redefined\n", text); }
 }
 
 func yy_EndOfLine() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "EndOfLine");
+	position := cursor_checkpoint();
 	if !yymatchString("\r\n") {
-		ThunkCursor, yypos = position.restore();
+		position.restore();
 		if !yymatchChar('\n') {
-			ThunkCursor, yypos = position.restore();
+			position.restore();
 			if !yymatchChar('\r') {
-				ThunkCursor, yypos = position.restore();
-				fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "EndOfLine", yybuf + yypos);
-				return false;
+				position.restore();
+				return "EndOfLine".failed(TextCursor);
 			}
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "EndOfLine", yybuf + yypos);
-	return true;
+	return "EndOfLine".succeeded(TextCursor);
 }
 
 func yy_Comment() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Comment");
+	position := cursor_checkpoint();
 	if yymatchChar('#') {
 		for {
-			position_1 := ThunkCursor.save(yypos);
+			position_1 := cursor_checkpoint();
 			if !yy_EndOfLine() {
-				ThunkCursor, yypos = position_1.restore();
+				position_1.restore();
 				if yymatchDot() { continue; }
 			}
 			break;
 		}
-		ThunkCursor, yypos = position_1.restore();
+		position_1.restore();
 		if yy_EndOfLine() {
-			fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Comment", yybuf + yypos);
-			return true;
+			return "Comment".succeeded(TextCursor);
 		}
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Comment", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Comment".failed(TextCursor);
 }
 
-func yy_Space() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Space");
+func space() bool {
+	position := cursor_checkpoint();
 	if !yymatchChar(' ') {
-		ThunkCursor, yypos = position.restore();
+		position.restore();
 		if !yymatchChar('\t') {
-			ThunkCursor, yypos = position.restore();
+			position.restore();
 			if !yy_EndOfLine() {
-				ThunkCursor, yypos = position.restore();
-				fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Space", yybuf + yypos);
-				return false;
+				position.restore();
+				return "Space".failed(TextCursor);
 			}
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Space", yybuf + yypos);
-	return true;
+	return "Space".succeeded(TextCursor);
 }
 
 func yy_Range() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Range");
+	position := cursor_checkpoint();
 	if !yy_Char() || !yymatchChar('-') || !yy_Char() {
-		ThunkCursor, yypos = position.restore();
+		position.restore();
 		if !yy_Char() {
-			ThunkCursor, yypos = position.restore();
-			fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Range", yybuf + yypos);
-			return false;
+			position.restore();
+			return "Range".failed(TextCursor);
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Range", yybuf + yypos);
-	return true;
+	return "Range".succeeded(TextCursor);
 }
 
 func yy_Char() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Char");
+	position := cursor_checkpoint();
 	if !yymatchChar('\\') || !yymatchClass("\000\000\000\000\204\000\000\000\000\000\000\070\146\100\124\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-		ThunkCursor, yypos = position.restore();
+		position.restore();
 		if !yymatchChar('\\') || !yymatchClass("\000\000\000\000\000\000\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") || !yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") || !yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-			ThunkCursor, yypos = position.restore();
+			position.restore();
 			if yymatchChar('\\') && yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-				position_1 := ThunkCursor.save(yypos);
+				position_1 := cursor_checkpoint();
 				if !yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-					ThunkCursor, yypos = position_1.restore();
+					position_1.restore();
 				}
 			} else {
-				ThunkCursor, yypos = position.restore();
+				position.restore();
 				if !yymatchChar('\\') || !yymatchChar('-') {
-					ThunkCursor, yypos = position.restore();
-					position_1 := ThunkCursor.save(yypos);
+					position.restore();
+					position_1 := cursor_checkpoint();
 					if yymatchChar('\\') { goto bad_char; }
-					ThunkCursor, yypos = position_1.restore();
+					position_1.restore();
 					if !yymatchDot() { goto bad_char; }
 				}
 			}
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Char", yybuf + yypos);
-	return true;
+	return "Char".succeeded(TextCursor);
 
 bad_char:
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Char", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Char".failed(TextCursor);
 }
 
 func yy_IdentCont() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "IdentCont");
+	position := cursor_checkpoint();
 	if !yy_IdentStart() {
-		ThunkCursor, yypos = position.restore();
+		position.restore();
 		if !yymatchClass("\000\000\000\000\000\000\377\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-			ThunkCursor, yypos = position.restore();
-			fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "IdentCont", yybuf + yypos);
-			return false;
+			position.restore();
+			return "IdentCont".failed(TextCursor);
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "IdentCont", yybuf + yypos);
-	return true;
+	return "IdentCont".succeeded(TextCursor);
 }
 
 func yy_IdentStart() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "IdentStart");
+	position := cursor_checkpoint();
 	if yymatchClass("\000\000\000\000\000\000\000\000\376\377\377\207\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "IdentStart", yybuf + yypos);
-		return true;
+		return "IdentStart".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "IdentStart", yybuf + yypos);
-	return false;
+	position.restore();
+	return "IdentStart".failed(TextCursor);
 }
 
 func yy_END() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "END");
-	if yymatchChar('>') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "END", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('>') && spacing() {
+		return "END".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "END", yybuf + yypos);
-	return false;
+	position.restore();
+	return "END".failed(TextCursor);
 }
 
 func yy_BEGIN() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "BEGIN");
-	if yymatchChar('<') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "BEGIN", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('<') && spacing() {
+		return "BEGIN".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "BEGIN", yybuf + yypos);
-	return false;
+	position.restore();
+	return "BEGIN".failed(TextCursor);
 }
 
 func yy_DOT() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "DOT");
-	if yymatchChar('.') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "DOT", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('.') && spacing() {
+		return "DOT".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "DOT", yybuf + yypos);
-	return false;
+	position.restore();
+	return "DOT".failed(TextCursor);
 }
 
 func yy_Class() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Class");
+	position := cursor_checkpoint();
 	if yymatchChar('[') {
-		yyText(yybegin, yyend);
-		yybegin = yypos;
+		TextBuffer.found_token(yybegin, yyend);
+		yybegin = TextCursor;
 		for {
-			position_1 := ThunkCursor.save(yypos);
+			position_1 := cursor_checkpoint();
 			if yymatchChar(']') { break; }
-			ThunkCursor, yypos = position_1.restore();
+			position_1.restore();
 			if !yy_Range() { break; }
 		}
-		ThunkCursor, yypos = position_1.restore();
-		yyText(yybegin, yyend);
-		yyend = yypos;
-		if yymatchChar(']') && yy_Spacing() {
-			fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Class", yybuf + yypos);
-			return true;
+		position_1.restore();
+		TextBuffer.found_token(yybegin, yyend);
+		yyend = TextCursor;
+		if yymatchChar(']') && spacing() {
+			return "Class".succeeded(TextCursor);
 		}
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Class", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Class".failed(TextCursor);
 }
 
 func yy_Literal() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Literal");
+	position := cursor_checkpoint();
 	if yymatchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-		yyText(yybegin, yyend);
-		yybegin = yypos;
+		TextBuffer.found_token(yybegin, yyend);
+		yybegin = TextCursor;
 		for {
-			position_1 := ThunkCursor.save(yypos);
+			position_1 := cursor_checkpoint();
 			if yymatchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 				break;
 			}
-			ThunkCursor, yypos = position_1.restore();
+			position_1.restore();
 			if !yy_Char() { break; }
 		}
-		ThunkCursor, yypos = position_1.restore();
-		yyText(yybegin, yyend);
-		yyend = yypos;
+		position_1.restore();
+		TextBuffer.found_token(yybegin, yyend);
+		yyend = TextCursor;
 		if yymatchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-			if yy_Spacing() {
+			if spacing() {
 				goto good_literal;
 			}
 		}
 	}
 
-	ThunkCursor, yypos = position.restore();
+	position.restore();
 	if !yymatchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 		goto bad_literal;
 	}
-	yyText(yybegin, yyend);
-	yybegin = yypos;
+	TextBuffer.found_token(yybegin, yyend);
+	yybegin = TextCursor;
 	for {
-		position_1 := ThunkCursor.save(yypos);
+		position_1 := cursor_checkpoint();
 		if !yymatchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
-			ThunkCursor, yypos = position_1.restore();
+			position_1.restore();
 			if yy_Char() { continue; }
 		}
 		break;
 	}
-	ThunkCursor, yypos = position_1.restore();
-	yyText(yybegin, yyend);
-	yyend = yypos;
+	position_1.restore();
+	TextBuffer.found_token(yybegin, yyend);
+	yyend = TextCursor;
 	if !yymatchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 		goto bad_literal;
 	}
-	if !yy_Spacing() { goto bad_literal; }
+	if !spacing() { goto bad_literal; }
 
 good_literal:
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Literal", yybuf + yypos);
-	return true;
+	return "Literal".succeeded(TextCursor);
 
 bad_literal:
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Literal", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Literal".failed(TextCursor);
 }
 
 func yy_CLOSE() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "CLOSE");
-	if yymatchChar(')') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "CLOSE", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar(')') && spacing() {
+		return "CLOSE".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "CLOSE", yybuf + yypos);
-	return false;
+	position.restore();
+	return "CLOSE".failed(TextCursor);
 }
 
 func yy_OPEN() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "OPEN");
-	if yymatchChar('(') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "OPEN", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('(') && spacing() {
+		return "OPEN".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "OPEN", yybuf + yypos);
-	return false;
+	position.restore();
+	return "OPEN".failed(TextCursor);
 }
 
 func yy_PLUS() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "PLUS");
-	if yymatchChar('+') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "PLUS", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('+') && spacing() {
+		return "PLUS".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "PLUS", yybuf + yypos);
-	return false;
+	position.restore();
+	return "PLUS".failed(TextCursor);
 }
 
 func yy_STAR() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "STAR");
-	if yymatchChar('*') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "STAR", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('*') && spacing() {
+		return "STAR".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "STAR", yybuf + yypos);
-	return false;
+	position.restore();
+	return "STAR".failed(TextCursor);
 }
 
 func yy_QUESTION() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "QUESTION");
-	if yymatchChar('?') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "QUESTION", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('?') && spacing() {
+		return "QUESTION".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "QUESTION", yybuf + yypos);
-	return false;
+	position.restore();
+	return "QUESTION".failed(TextCursor);
 }
 
 func yy_Primary() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Primary");
+	position := cursor_checkpoint();
 	if yy_Identifier() {
-		position_1 := ThunkCursor.save(yypos);
+		position_1 := cursor_checkpoint();
 		if !yy_LEFTARROW() {
-			ThunkCursor, yypos = position_1.restore();
-			yyDo(yy_1_Primary, yybegin, yyend);
+			position_1.restore();
+			yy_1_Primary.store(yybegin, yyend);
 			goto good_primary;
 		}
 	}
 
-	ThunkCursor, yypos = position.restore();
+	position.restore();
 	if !yy_OPEN() || !yy_Expression() || !yy_CLOSE() {
-		ThunkCursor, yypos = position.restore();
+		position.restore();
 		if yy_literal() {
-			yyDo(yy_2_Primary, yybegin, yyend);
+			yy_2_Primary.store(yybegin, yyend);
 		} else {
-			ThunkCursor, yypos = position.restore();
+			position.restore();
 			if yy_Class() {
-				yyDo(yy_3_Primary, yybegin, yyend);
+				yy_3_Primary.store(yybegin, yyend);
 			} else {
-				ThunkCursor, yypos = position.restore();
+				position.restore();
 				if yy_DOT() {
-					yyDo(yy_4_Primary, yybegin, yyend);
+					yy_4_Primary.store(yybegin, yyend);
 				} else {
-					ThunkCursor, yypos = position.restore();
+					position.restore();
 					if yy_Action() {
-						yyDo(yy_5_Primary, yybegin, yyend);
+						yy_5_Primary.store(yybegin, yyend);
 					} else {
-						ThunkCursor, yypos = position.restore();
+						position.restore();
 						if yy_BEGIN() {
-							yyDo(yy_6_Primary, yybegin, yyend);
+							yy_6_Primary.store(yybegin, yyend);
 						} else {
-							ThunkCursor, yypos = position.restore();
+							position.restore();
 							if yy_END() {
-								yyDo(yy_7_Primary, yybegin, yyend);
+								yy_7_Primary.store(yybegin, yyend);
 							} else {
-								ThunkCursor, yypos = position.restore();
-								fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Primary", yybuf + yypos);
-								return false;
+								position.restore();
+								return "Primary".failed(TextCursor);
 							}
 						}
 					}
@@ -714,262 +633,207 @@ func yy_Primary() bool {
 	}
 
 good_primary:
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Primary", yybuf + yypos);
-	return true;
+	return "Primary".succeeded(TextCursor);
 }
 
 func yy_NOT() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "NOT");
-	if yymatchChar('!') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "NOT", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('!') && spacing() {
+		return "NOT".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "NOT", yybuf + yypos);
-	return false;
+	position.restore();
+	return "NOT".failed(TextCursor);
 }
 
 func yy_Suffix() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Suffix");
+	position := cursor_checkpoint();
 	if yy_Primary() {
-		position_1 := ThunkCursor.save(yypos);
+		position_1 := cursor_checkpoint();
 		if yy_QUESTION() {
-			yyDo(yy_1_Suffix, yybegin, yyend);
+			yy_1_Suffix.store(yybegin, yyend);
 		} else {
-			ThunkCursor, yypos = position_1.restore();
+			position_1.restore();
 			if yy_STAR() {
-				yyDo(yy_2_Suffix, yybegin, yyend);
+				yy_2_Suffix.store(yybegin, yyend);
 			} else {
-				ThunkCursor, yypos = position_1.restore();
+				position_1.restore();
 				if yy_PLUS() {
-					yyDo(yy_3_Suffix, yybegin, yyend);
+					yy_3_Suffix.store(yybegin, yyend);
 				} else {
-					ThunkCursor, yypos = position_1.restore();
+					position_1.restore();
 				}
 			}
 		}
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Suffix", yybuf + yypos);
-		return true;
+		return "Suffix".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Suffix", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Suffix".failed(TextCursor);
 }
 
 func yy_Action() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Action");
+	position := cursor_checkpoint();
 	if yymatchChar('{') {
-		yyText(yybegin, yyend);
-		yybegin = yypos;
+		TextBuffer.found_token(yybegin, yyend);
+		yybegin = TextCursor;
 		for {
-			position_1 := ThunkCursor.save(yypos);
+			position_1 := Curosr{TextCursor, ThunkCursor};
 			if !yymatchClass("\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377\337\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377") { break; }
 		}
-		ThunkCursor, yypos = position_1.restore();
-		yyText(yybegin, yyend);
-		yyend = yypos;
-		if yymatchChar('}') && yy_Spacing() {
-			fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Action", yybuf + yypos);
-			return true;
+		position_1.restore();
+		TextBuffer.found_token(yybegin, yyend);
+		yyend = TextCursor;
+		if yymatchChar('}') && spacing() {
+			return "Action".succeeded(TextCursor);
 		}
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Action", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Action".failed(TextCursor);
 }
 
 func yy_AND() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "AND");
-	if yymatchChar('&') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "AND", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('&') && spacing() {
+		return "AND".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "AND", yybuf + yypos);
-	return false;
+	position.restore();
+	return "AND".failed(TextCursor);
 }
 
 func yy_Prefix() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Prefix");
+	position := cursor_checkpoint();
 	if yy_AND() && yy_Action() {
-		yyDo(yy_1_Prefix, yybegin, yyend);
+		yy_1_Prefix.store(yybegin, yyend);
 	} else {
-		ThunkCursor, yypos = position.restore();
+		position.restore();
 		if !yy_AND() || !yy_Suffix() {
-			ThunkCursor, yypos = position.restore();
+			position.restore();
 			if !yy_NOT() || !yy_Suffix() {
-				ThunkCursor, yypos = position.restore();
+				position.restore();
 				if !yy_Suffix() {
-					ThunkCursor, yypos = position.restore();
-					fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Prefix", yybuf + yypos);
-					return false;
+					position.restore();
+					return "Prefix".failed(TextCursor);
 				}
 			}
-			yyDo(yy_3_Prefix, yybegin, yyend);
+			yy_3_Prefix.store(yybegin, yyend);
 		} else {
-			yyDo(yy_2_Prefix, yybegin, yyend);
+			yy_2_Prefix.store(yybegin, yyend);
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Prefix", yybuf + yypos);
-	return true;
+	return "Prefix".succeeded(TextCursor);
 }
 
 func yy_SLASH() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "SLASH");
-	if yymatchChar('/') && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "SLASH", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchChar('/') && spacing() {
+		return "SLASH".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "SLASH", yybuf + yypos);
-	return false;
+	position.restore();
+	return "SLASH".failed(TextCursor);
 }
 
 func yy_Sequence() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Sequence");
+	position := cursor_checkpoint();
 	if yy_Prefix() {
 		for {
-			position_1 := ThunkCursor.save(yypos);
+			position_1 := cursor_checkpoint();
 			if !yy_Prefix() { break; }
-			yyDo(yy_1_Sequence, yybegin, yyend);
+			yy_1_Sequence.store(yybegin, yyend);
 		}
-		ThunkCursor, yypos = position_1.restore();
+		position_1.restore();
 	} else {
-		ThunkCursor, yypos = position.restore();
-		yyDo(yy_2_Sequence, yybegin, yyend);
+		position.restore();
+		yy_2_Sequence.store(yybegin, yyend);
 	}
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Sequence", yybuf + yypos);
-	return true;
+	return "Sequence".succeeded(TextCursor);
 
 bad_sequence:
 	// Apparently never gets here, which is troubling...
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Sequence", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Sequence".failed(TextCursor);
 }
 
 func yy_Expression() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Expression");
+	position := cursor_checkpoint();
 	if yy_Sequence() {
 		for {
-			position_1 := ThunkCursor.save(yypos);
+			position_1 := cursor_checkpoint();
 			if !yy_SLASH() || !yy_Sequence { break; }
-			yyDo(yy_1_Expression, yybegin, yyend);
+			yy_1_Expression.store(yybegin, yyend);
 		}
-		ThunkCursor, yypos = position_1.restore();
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Expression", yybuf + yypos);
-		return true;
+		position_1.restore();
+		return "Expression".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Expression", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Expression".failed(TextCursor);
 }
 
 func yy_LEFTARROW() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "LEFTARROW");
-	if yymatchString("<-") && yy_Spacing() {
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "LEFTARROW", yybuf + yypos);
-		return true;
+	position := cursor_checkpoint();
+	if yymatchString("<-") && spacing() {
+		return "LEFTARROW".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "LEFTARROW", yybuf + yypos);
-	return false;
+	position.restore();
+	return "LEFTARROW".failed(TextCursor);
 }
 
 func yy_Identifier() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Identifier");
-	yyText(yybegin, yyend);
-	yybegin = yypos;
+	position := cursor_checkpoint();
+	TextBuffer.found_token(yybegin, yyend);
+	yybegin = TextCursor;
 	if yy_IdentStart() {
 		for {
-			position_1 := ThunkCursor.save(yypos);
+			position_1 := cursor_checkpoint();
 			if !yy_IdentCont() {
-				ThunkCursor, yypos = position_1.restore();
-				yyText(yybegin, yyend);
-				yyend = yypos;
-				if !yy_Spacing() { break; }
-				fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Identifier", yybuf + yypos);
-				return true;
+				position_1.restore();
+				TextBuffer.found_token(yybegin, yyend);
+				yyend = TextCursor;
+				if !spacing() { break; }
+				return "Identifier".succeeded(TextCursor);
 			}
 		}
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Identifier", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Identifier".failed(TextCursor);
 }
 
 func yy_EndOfFile() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "EndOfFile");
+	position := cursor_checkpoint();
 	if !yymatchDot() {
-		ThunkCursor, yypos = position.restore();
-		fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "EndOfFile", yybuf + yypos);
-		return true;
+		position.restore();
+		return "EndOfFile".succeeded(TextCursor);
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "EndOfFile", yybuf + yypos);
-	return false;
+	position.restore();
+	return "EndOfFile".failed(TextCursor);
 }
 
 func yy_Definition() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Definition");
+	position := cursor_checkpoint();
 	if yy_Identifier() {
-		yyDo(yy_1_Definition, yybegin, yyend);
+		yy_1_Definition.store(yybegin, yyend);
 		if yy_LEFTARROW() && yy_Expression() {
-			yyDo(yy_2_Definition, yybegin, yyend);
-			yyText(yybegin, yyend);
-			if yyAccept(yythunkpos0) {
-				fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Definition", yybuf + yypos);
-				return true;
+			yy_2_Definition.store(yybegin, yyend);
+			TextBuffer.found_token(yybegin, yyend);
+			if ThunkCursor != 0 {
+				fmt.Fprintf(os.Stderr, "accept denied at %d\n", ThunkCursor);
+			} else {
+				done();
+				commit();
+				return "Definition".succeeded(TextCursor);
 			}
 		}
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Definition", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Definition".failed(TextCursor);
 }
 
-func yy_Spacing() bool {
-	fmt.Fprintln(os.Stderr, "Spacing");
+func spacing() bool {
 	for {
-		position := ThunkCursor.save(yypos);
-		if !yy_Space() {
-			ThunkCursor = position.restore();
+		position := cursor_checkpoint();
+		if !space() {
+			position.restore();
 			if !yy_Comment() { break; }
 		}
 	}
-	ThunkCursor, yypos = position.restore();
-	fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Spacing", yybuf + yypos);
-	return true;
-}
-
-func yy_Grammar() bool {
-	position := ThunkCursor.save(yypos);
-	fmt.Fprintln(os.Stderr, "Grammar");
-	if yy_Spacing() && yy_Definition {
-		for {
-			position_1 := ThunkCursor.save(yypos);
-			if !yy_Definition() { break; }
-		}
-
-		ThunkCursor, yypos := position_1.restore();
-		if yy_EndOfFile() {
-			fmt.Fprintf(os.Stderr, "  ok   %s @ %s\n", "Grammar", yybuf + yypos);
-			return true;
-		}
-	}
-	ThunkCursor := position.restore();
-	fmt.Fprintf(os.Stderr, "  fail %s @ %s\n", "Grammar", yybuf + yypos);
-	return false;
+	position.restore();
+	return "Spacing".succeeded(TextCursor);
 }
