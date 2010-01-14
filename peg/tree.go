@@ -263,8 +263,7 @@ func pop() *Node {
 }
 
 
-func Node_fprint(stream *FILE, node *Node) {
-	assert(node);
+func (node *Node) fprint(stream *os.File) {
 	switch node.type {
 		case Rule:		fprintf(stream, " %s", node->rule.name);
 		case Name:		fprintf(stream, " %s", node->name.rule->rule.name);
@@ -302,6 +301,6 @@ func Node_fprint(stream *FILE, node *Node) {
 	}
 }
 
-func Node_print(Node *node)	{
-	Node_fprint(stderr, node);
+func (node *Node) print()	{
+	node.fprint(os.Stderr);
 }

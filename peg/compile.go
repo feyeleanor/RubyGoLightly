@@ -16,7 +16,7 @@
  * Last edited: 2007-08-31 13:55:23 by piumarta on emilia.local
  */
 
-import "tree"
+package pegleg
 
 prev := 0
 func yyl() {
@@ -97,25 +97,25 @@ func Node_compile_c_ko(node *Node, ko int) {
 			exit(1);
 
 		case Dot:
-			fprintf(output, "  if (!yymatchDot()) goto l%d;", ko);
+			fprintf(output, "  if (!matchDot()) goto l%d;", ko);
 
 		case Name:
 			fprintf(output, "  if (!yy_%s()) goto l%d;", node.rule.name, ko);
-			if node.variable { fprintf(output, "  yyDo(yySet, %d, 0);", node.variable.offset); }
+			if node.variable { fprintf(output, "  Do(yySet, %d, 0);", node.variable.offset); }
 
 		case Character, String:
 			length := len(node.value);
 			if 1 == length || (2 == length && '\\' == node.value[0]) {
-				fprintf(output, "  if (!yymatchChar('%s')) goto l%d;", node.value, ko);
+				fprintf(output, "  if (!matchChar('%s')) goto l%d;", node.value, ko);
 			} else {
-				fprintf(output, "  if (!yymatchString(\"%s\")) goto l%d;", node.value, ko);
+				fprintf(output, "  if (!matchString(\"%s\")) goto l%d;", node.value, ko);
 			}
 
 		case Class:
-			fprintf(output, "  if (!yymatchClass((unsigned char *)\"%s\")) goto l%d;", makeCharClass(node.value), ko);
+			fprintf(output, "  if (!matchClass((unsigned char *)\"%s\")) goto l%d;", makeCharClass(node.value), ko);
 
 		case Action:
-			fprintf(output, "  yyDo(yy%s, yybegin, yyend);", node.name);
+			fprintf(output, "  Do(yy%s, yybegin, yyend);", node.name);
 
 		case Predicate:
 			fprintf(output, "  yyText(yybegin, yyend);  if (!(%s)) goto l%d;", node.text, ko);
@@ -243,11 +243,11 @@ func Rule_compile_c2(Node *node) {
 		safe := (Query == node.expression.type) || (Star == node.expression.type);
 		fprintf(output, "\nYY_RULE(int) yy_%s()\n{", node.name);
 		if !safe { save(0) }
-		if node.variables { fprintf(output, "  yyDo(yyPush, %d, 0);", countVariables(node.variables)) }
+		if node.variables { fprintf(output, "  Do(yyPush, %d, 0);", countVariables(node.variables)) }
 		fprintf(output, "\n  yyprintf((stderr, \"%%s\\n\", \"%s\"));", node.name);
 		Node_compile_c_ko(node.expression, ko);
 		fprintf(output, "\n  yyprintf((stderr, \"  ok   %%s @ %%s\\n\", \"%s\", yybuf+yypos));", node.name);
-		if node.variables { fprintf(output, "  yyDo(yyPop, %d, 0);", countVariables(node.variables)) }
+		if node.variables { fprintf(output, "  Do(yyPop, %d, 0);", countVariables(node.variables)) }
 		fprintf(output, "\n  return 1;");
 		if !safe {
 			label(ko);
@@ -350,27 +350,27 @@ YY_LOCAL(int) yyrefill(void)\n\
   return 1;\n\
 }\n\
 \n\
-YY_LOCAL(int) yymatchDot(void)\n\
+YY_LOCAL(int) matchDot(void)\n\
 {\n\
   if (yypos >= yylimit && !yyrefill()) return 0;\n\
   ++yypos;\n\
   return 1;\n\
 }\n\
 \n\
-YY_LOCAL(int) yymatchChar(int c)\n\
+YY_LOCAL(int) matchChar(int c)\n\
 {\n\
   if (yypos >= yylimit && !yyrefill()) return 0;\n\
   if (yybuf[yypos] == c)\n\
     {\n\
       ++yypos;\n\
-      yyprintf((stderr, \"  ok   yymatchChar(%c) @ %s\\n\", c, yybuf+yypos));\n\
+      yyprintf((stderr, \"  ok   matchChar(%c) @ %s\\n\", c, yybuf+yypos));\n\
       return 1;\n\
     }\n\
-  yyprintf((stderr, \"  fail yymatchChar(%c) @ %s\\n\", c, yybuf+yypos));\n\
+  yyprintf((stderr, \"  fail matchChar(%c) @ %s\\n\", c, yybuf+yypos));\n\
   return 0;\n\
 }\n\
 \n\
-YY_LOCAL(int) yymatchString(char *s)\n\
+YY_LOCAL(int) matchString(char *s)\n\
 {\n\
   int yysav= yypos;\n\
   while (*s)\n\
@@ -387,7 +387,7 @@ YY_LOCAL(int) yymatchString(char *s)\n\
   return 1;\n\
 }\n\
 \n\
-YY_LOCAL(int) yymatchClass(unsigned char *bits)\n\
+YY_LOCAL(int) matchClass(unsigned char *bits)\n\
 {\n\
   int c;\n\
   if (yypos >= yylimit && !yyrefill()) return 0;\n\
@@ -395,14 +395,14 @@ YY_LOCAL(int) yymatchClass(unsigned char *bits)\n\
   if (bits[c >> 3] & (1 << (c & 7)))\n\
     {\n\
       ++yypos;\n\
-      yyprintf((stderr, \"  ok   yymatchClass @ %s\\n\", yybuf+yypos));\n\
+      yyprintf((stderr, \"  ok   matchClass @ %s\\n\", yybuf+yypos));\n\
       return 1;\n\
     }\n\
-  yyprintf((stderr, \"  fail yymatchClass @ %s\\n\", yybuf+yypos));\n\
+  yyprintf((stderr, \"  fail matchClass @ %s\\n\", yybuf+yypos));\n\
   return 0;\n\
 }\n\
 \n\
-YY_LOCAL(void) yyDo(yyaction action, int begin, int end)\n\
+YY_LOCAL(void) Do(yyaction action, int begin, int end)\n\
 {\n\
   while (yythunkpos >= yythunkslen)\n\
     {\n\
@@ -511,13 +511,7 @@ YY_PARSE(int) YYPARSEFROM(yyrule yystart)\n\
   yyCommit();\n\
   return yyok;\n\
   (void)yyrefill;\n\
-  (void)yymatchDot;\n\
-  (void)yymatchChar;\n\
-  (void)yymatchString;\n\
-  (void)yymatchClass;\n\
-  (void)yyDo;\n\
   (void)yyText;\n\
-  (void)yyDone;\n\
   (void)yyCommit;\n\
   (void)yyAccept;\n\
   (void)yyPush;\n\

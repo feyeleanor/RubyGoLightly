@@ -181,10 +181,10 @@ func parse() bool {
 
 func parse_grammar() bool {
 	position := cursor_checkpoint();
-	if spacing() && yy_Definition() {
+	if spacing() && definition() {
 		for {
 			position_1 := cursor_checkpoint();
-			if !yy_Definition() { break; }
+			if !definition() { break; }
 		}
 		position_1.restore();
 		if yy_EndOfFile() { return "Grammar".succeeded(TextCursor); }
@@ -214,21 +214,21 @@ func commit() {
 	TextCursor = ThunkCursor = 0;
 }
 
-func yymatchDot() bool {
+func matchDot() bool {
 	TextCursor++;
 	return true;
 }
 
-func yymatchChar(c int) bool {
+func matchChar(c int) bool {
 	if TextBuffer[TextCursor] == c {
 		TextCursor++;
-		return ("yymatchChar(" + c + ")").succeeded(TextCursor);
+		return ("matchChar(" + c + ")").succeeded(TextCursor);
 	} else {
-		return ("yymatchChar(" + c + ")").failed(TextCursor);
+		return ("matchChar(" + c + ")").failed(TextCursor);
 	}
 }
 
-func yymatchString(s string) bool {
+func matchString(s string) bool {
 	yysav := TextCursor;
 	for *s {
 		if TextBuffer[TextCursor] != *s {
@@ -241,41 +241,13 @@ func yymatchString(s string) bool {
 	return true;
 }
 
-func yymatchClass(bits []byte) bool {
+func matchClass(bits []byte) bool {
 	c := TextBuffer[TextCursor];
 	if bits[c >> 3] & (1 << (c & 7)) {
 		TextCursor++;
-		return "yymatchClass".succeeded(TextCursor);
+		return "matchClass".succeeded(TextCursor);
 	}
-	return "yymatchClass".failed(TextCursor);
-}
-
-func yy_7_Primary(text string, yyleng int) {
-	push(Predicate{text: "yyend = TextCursor"});
-}
-
-func yy_6_Primary(text string, yyleng int) {
-	push(Predicate{text: "yybegin = TextCursor"});
-}
-
-func yy_5_Primary(text string, yyleng int) {
-	push(makeAction(text));
-}
-
-func yy_4_Primary(text string, yyleng int) {
-	push(Dot{});
-}
-
-func yy_3_Primary(text string, yyleng int) {
-	push(Class{cclass: text});
-}
-
-func yy_2_Primary(text string, yyleng int) {
-	push(String{value: text});
-}
-
-func yy_1_Primary(text string, yyleng int) {
-	push(Name{used: true, variable: nil, rule: findRule(text)});
+	return "matchClass".failed(TextCursor);
 }
 
 func yy_3_Suffix(text string, yyleng int) {
@@ -318,20 +290,20 @@ func yy_1_Expression(text string, yyleng int) {
 
 func yy_2_Definition(text string, yyleng int) {
 	e := pop();
-	Rule_setExpression(pop(), e);
+	pop().setExpression(e);
 }
 
 func yy_1_Definition(text string, yyleng int) {
 	if push(beginRule(findRule(text))).expression { fmt.Fprintf(os.Stderr, "rule '%s' redefined\n", text); }
 }
 
-func yy_EndOfLine() bool {
+func end_of_line() bool {
 	position := cursor_checkpoint();
-	if !yymatchString("\r\n") {
+	if !matchString("\r\n") {
 		position.restore();
-		if !yymatchChar('\n') {
+		if !matchChar('\n') {
 			position.restore();
-			if !yymatchChar('\r') {
+			if !matchChar('\r') {
 				position.restore();
 				return "EndOfLine".failed(TextCursor);
 			}
@@ -342,17 +314,17 @@ func yy_EndOfLine() bool {
 
 func yy_Comment() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('#') {
+	if matchChar('#') {
 		for {
 			position_1 := cursor_checkpoint();
-			if !yy_EndOfLine() {
+			if !end_of_line() {
 				position_1.restore();
-				if yymatchDot() { continue; }
+				if matchDot() { continue; }
 			}
 			break;
 		}
 		position_1.restore();
-		if yy_EndOfLine() {
+		if end_of_line() {
 			return "Comment".succeeded(TextCursor);
 		}
 	}
@@ -362,11 +334,11 @@ func yy_Comment() bool {
 
 func space() bool {
 	position := cursor_checkpoint();
-	if !yymatchChar(' ') {
+	if !matchChar(' ') {
 		position.restore();
-		if !yymatchChar('\t') {
+		if !matchChar('\t') {
 			position.restore();
-			if !yy_EndOfLine() {
+			if !end_of_line() {
 				position.restore();
 				return "Space".failed(TextCursor);
 			}
@@ -377,7 +349,7 @@ func space() bool {
 
 func yy_Range() bool {
 	position := cursor_checkpoint();
-	if !yy_Char() || !yymatchChar('-') || !yy_Char() {
+	if !yy_Char() || !matchChar('-') || !yy_Char() {
 		position.restore();
 		if !yy_Char() {
 			position.restore();
@@ -389,23 +361,23 @@ func yy_Range() bool {
 
 func yy_Char() bool {
 	position := cursor_checkpoint();
-	if !yymatchChar('\\') || !yymatchClass("\000\000\000\000\204\000\000\000\000\000\000\070\146\100\124\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+	if !matchChar('\\') || !matchClass("\000\000\000\000\204\000\000\000\000\000\000\070\146\100\124\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 		position.restore();
-		if !yymatchChar('\\') || !yymatchClass("\000\000\000\000\000\000\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") || !yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") || !yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+		if !matchChar('\\') || !matchClass("\000\000\000\000\000\000\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") || !matchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") || !matchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 			position.restore();
-			if yymatchChar('\\') && yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+			if matchChar('\\') && matchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 				position_1 := cursor_checkpoint();
-				if !yymatchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+				if !matchClass("\000\000\000\000\000\000\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 					position_1.restore();
 				}
 			} else {
 				position.restore();
-				if !yymatchChar('\\') || !yymatchChar('-') {
+				if !matchChar('\\') || !matchChar('-') {
 					position.restore();
 					position_1 := cursor_checkpoint();
-					if yymatchChar('\\') { goto bad_char; }
+					if matchChar('\\') { goto bad_char; }
 					position_1.restore();
-					if !yymatchDot() { goto bad_char; }
+					if !matchDot() { goto bad_char; }
 				}
 			}
 		}
@@ -421,7 +393,7 @@ func yy_IdentCont() bool {
 	position := cursor_checkpoint();
 	if !yy_IdentStart() {
 		position.restore();
-		if !yymatchClass("\000\000\000\000\000\000\377\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+		if !matchClass("\000\000\000\000\000\000\377\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 			position.restore();
 			return "IdentCont".failed(TextCursor);
 		}
@@ -431,7 +403,7 @@ func yy_IdentCont() bool {
 
 func yy_IdentStart() bool {
 	position := cursor_checkpoint();
-	if yymatchClass("\000\000\000\000\000\000\000\000\376\377\377\207\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+	if matchClass("\000\000\000\000\000\000\000\000\376\377\377\207\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 		return "IdentStart".succeeded(TextCursor);
 	}
 	position.restore();
@@ -440,16 +412,14 @@ func yy_IdentStart() bool {
 
 func yy_END() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('>') && spacing() {
-		return "END".succeeded(TextCursor);
-	}
+	if matchChar('>') && spacing() { return "END".succeeded(TextCursor); }
 	position.restore();
 	return "END".failed(TextCursor);
 }
 
 func yy_BEGIN() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('<') && spacing() {
+	if matchChar('<') && spacing() {
 		return "BEGIN".succeeded(TextCursor);
 	}
 	position.restore();
@@ -458,7 +428,7 @@ func yy_BEGIN() bool {
 
 func yy_DOT() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('.') && spacing() {
+	if matchChar('.') && spacing() {
 		return "DOT".succeeded(TextCursor);
 	}
 	position.restore();
@@ -467,19 +437,19 @@ func yy_DOT() bool {
 
 func yy_Class() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('[') {
+	if matchChar('[') {
 		TextBuffer.found_token(yybegin, yyend);
 		yybegin = TextCursor;
 		for {
 			position_1 := cursor_checkpoint();
-			if yymatchChar(']') { break; }
+			if matchChar(']') { break; }
 			position_1.restore();
 			if !yy_Range() { break; }
 		}
 		position_1.restore();
 		TextBuffer.found_token(yybegin, yyend);
 		yyend = TextCursor;
-		if yymatchChar(']') && spacing() {
+		if matchChar(']') && spacing() {
 			return "Class".succeeded(TextCursor);
 		}
 	}
@@ -489,12 +459,12 @@ func yy_Class() bool {
 
 func yy_Literal() bool {
 	position := cursor_checkpoint();
-	if yymatchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+	if matchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 		TextBuffer.found_token(yybegin, yyend);
 		yybegin = TextCursor;
 		for {
 			position_1 := cursor_checkpoint();
-			if yymatchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+			if matchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 				break;
 			}
 			position_1.restore();
@@ -503,7 +473,7 @@ func yy_Literal() bool {
 		position_1.restore();
 		TextBuffer.found_token(yybegin, yyend);
 		yyend = TextCursor;
-		if yymatchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+		if matchClass("\000\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 			if spacing() {
 				goto good_literal;
 			}
@@ -511,14 +481,14 @@ func yy_Literal() bool {
 	}
 
 	position.restore();
-	if !yymatchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+	if !matchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 		goto bad_literal;
 	}
 	TextBuffer.found_token(yybegin, yyend);
 	yybegin = TextCursor;
 	for {
 		position_1 := cursor_checkpoint();
-		if !yymatchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+		if !matchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 			position_1.restore();
 			if yy_Char() { continue; }
 		}
@@ -527,7 +497,7 @@ func yy_Literal() bool {
 	position_1.restore();
 	TextBuffer.found_token(yybegin, yyend);
 	yyend = TextCursor;
-	if !yymatchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
+	if !matchClass("\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000") {
 		goto bad_literal;
 	}
 	if !spacing() { goto bad_literal; }
@@ -542,7 +512,7 @@ bad_literal:
 
 func yy_CLOSE() bool {
 	position := cursor_checkpoint();
-	if yymatchChar(')') && spacing() {
+	if matchChar(')') && spacing() {
 		return "CLOSE".succeeded(TextCursor);
 	}
 	position.restore();
@@ -551,7 +521,7 @@ func yy_CLOSE() bool {
 
 func yy_OPEN() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('(') && spacing() {
+	if matchChar('(') && spacing() {
 		return "OPEN".succeeded(TextCursor);
 	}
 	position.restore();
@@ -560,7 +530,7 @@ func yy_OPEN() bool {
 
 func yy_PLUS() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('+') && spacing() {
+	if matchChar('+') && spacing() {
 		return "PLUS".succeeded(TextCursor);
 	}
 	position.restore();
@@ -569,7 +539,7 @@ func yy_PLUS() bool {
 
 func yy_STAR() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('*') && spacing() {
+	if matchChar('*') && spacing() {
 		return "STAR".succeeded(TextCursor);
 	}
 	position.restore();
@@ -578,7 +548,7 @@ func yy_STAR() bool {
 
 func yy_QUESTION() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('?') && spacing() {
+	if matchChar('?') && spacing() {
 		return "QUESTION".succeeded(TextCursor);
 	}
 	position.restore();
@@ -591,7 +561,7 @@ func yy_Primary() bool {
 		position_1 := cursor_checkpoint();
 		if !yy_LEFTARROW() {
 			position_1.restore();
-			yy_1_Primary.store(yybegin, yyend);
+			func (text string, yyleng int) { push(Name{used: true, variable: nil, rule: findRule(text)}); }.store(yybegin, yyend);
 			goto good_primary;
 		}
 	}
@@ -600,27 +570,27 @@ func yy_Primary() bool {
 	if !yy_OPEN() || !yy_Expression() || !yy_CLOSE() {
 		position.restore();
 		if yy_literal() {
-			yy_2_Primary.store(yybegin, yyend);
+			func (text string, yyleng int) { push(String{value: text}); }.store(yybegin, yyend);
 		} else {
 			position.restore();
 			if yy_Class() {
-				yy_3_Primary.store(yybegin, yyend);
+				func (text string, yyleng int) { push(Class{cclass: text}); }.store(yybegin, yyend);
 			} else {
 				position.restore();
 				if yy_DOT() {
-					yy_4_Primary.store(yybegin, yyend);
+					func (text string, yyleng int) { push(Dot{}); }.store(yybegin, yyend);
 				} else {
 					position.restore();
 					if yy_Action() {
-						yy_5_Primary.store(yybegin, yyend);
+						func (text string, yyleng int) { push(makeAction(text)); }.store(yybegin, yyend);
 					} else {
 						position.restore();
 						if yy_BEGIN() {
-							yy_6_Primary.store(yybegin, yyend);
+							func (text string, yyleng int) { push(Predicate{text: "yybegin = TextCursor"}); }.store(yybegin, yyend);
 						} else {
 							position.restore();
 							if yy_END() {
-								yy_7_Primary.store(yybegin, yyend);
+								func(text string, yyleng int) { push(Predicate{text: "yyend = TextCursor"}); }.store(yybegin, yyend);
 							} else {
 								position.restore();
 								return "Primary".failed(TextCursor);
@@ -638,7 +608,7 @@ good_primary:
 
 func yy_NOT() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('!') && spacing() {
+	if matchChar('!') && spacing() {
 		return "NOT".succeeded(TextCursor);
 	}
 	position.restore();
@@ -672,17 +642,17 @@ func yy_Suffix() bool {
 
 func yy_Action() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('{') {
+	if matchChar('{') {
 		TextBuffer.found_token(yybegin, yyend);
 		yybegin = TextCursor;
 		for {
 			position_1 := Curosr{TextCursor, ThunkCursor};
-			if !yymatchClass("\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377\337\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377") { break; }
+			if !matchClass("\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377\337\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377\377") { break; }
 		}
 		position_1.restore();
 		TextBuffer.found_token(yybegin, yyend);
 		yyend = TextCursor;
-		if yymatchChar('}') && spacing() {
+		if matchChar('}') && spacing() {
 			return "Action".succeeded(TextCursor);
 		}
 	}
@@ -692,7 +662,7 @@ func yy_Action() bool {
 
 func yy_AND() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('&') && spacing() {
+	if matchChar('&') && spacing() {
 		return "AND".succeeded(TextCursor);
 	}
 	position.restore();
@@ -724,7 +694,7 @@ func yy_Prefix() bool {
 
 func yy_SLASH() bool {
 	position := cursor_checkpoint();
-	if yymatchChar('/') && spacing() {
+	if matchChar('/') && spacing() {
 		return "SLASH".succeeded(TextCursor);
 	}
 	position.restore();
@@ -769,7 +739,7 @@ func yy_Expression() bool {
 
 func yy_LEFTARROW() bool {
 	position := cursor_checkpoint();
-	if yymatchString("<-") && spacing() {
+	if matchString("<-") && spacing() {
 		return "LEFTARROW".succeeded(TextCursor);
 	}
 	position.restore();
@@ -798,7 +768,7 @@ func yy_Identifier() bool {
 
 func yy_EndOfFile() bool {
 	position := cursor_checkpoint();
-	if !yymatchDot() {
+	if !matchDot() {
 		position.restore();
 		return "EndOfFile".succeeded(TextCursor);
 	}
@@ -806,7 +776,7 @@ func yy_EndOfFile() bool {
 	return "EndOfFile".failed(TextCursor);
 }
 
-func yy_Definition() bool {
+func definition() bool {
 	position := cursor_checkpoint();
 	if yy_Identifier() {
 		yy_1_Definition.store(yybegin, yyend);
